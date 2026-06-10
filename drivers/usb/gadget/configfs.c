@@ -1581,6 +1581,24 @@ static void android_disconnect(struct usb_gadget *gadget)
 		schedule_work(&gi->work);
 	composite_disconnect(gadget);
 }
+
+static void android_reset(struct usb_gadget *gadget)
+{
+	struct usb_composite_dev *cdev = get_gadget_data(gadget);
+
+	if (!cdev) {
+		pr_err("%s: gadget is not connected\n", __func__);
+		return;
+	}
+
+	/*
+	 * Bus reset is part of normal re-enumeration. Treating it as a cable
+	 * disconnect drops the Android connected bit and emits
+	 * USB_STATE=DISCONNECTED, which hides ADB/NCM on Dipper after a
+	 * transient DWC3 reset even though the gadget is still bound.
+	 */
+	composite_disconnect(gadget);
+}
 #endif
 
 static const struct usb_gadget_driver configfs_driver_template = {
@@ -1588,7 +1606,7 @@ static const struct usb_gadget_driver configfs_driver_template = {
 	.unbind         = configfs_composite_unbind,
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 	.setup          = android_setup,
-	.reset          = android_disconnect,
+	.reset          = android_reset,
 	.disconnect     = android_disconnect,
 #else
 	.setup          = composite_setup,
