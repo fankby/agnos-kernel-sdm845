@@ -40,6 +40,28 @@
 static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup);
 static int dwc3_gadget_wakeup_int(struct dwc3 *dwc);
 static void dwc3_stop_active_transfers(struct dwc3 *dwc);
+
+static bool dwc3_dipper_configured_session(struct dwc3 *dwc)
+{
+	return dwc->dipper_keep_device_session &&
+		dwc->vbus_active &&
+		dwc->softconnect &&
+		dwc->pullups_connected &&
+		dwc->gadget.state == USB_STATE_CONFIGURED;
+}
+
+static void dwc3_dipper_log_state(struct dwc3 *dwc, const char *reason)
+{
+	u32 dsts = dwc3_readl(dwc->regs, DWC3_DSTS);
+	u32 dctl = dwc3_readl(dwc->regs, DWC3_DCTL);
+	u32 dcfg = dwc3_readl(dwc->regs, DWC3_DCFG);
+
+	dev_info(dwc->dev,
+		"Dipper %s: gadget=%d speed=%d link=%d dsts=%08x dctl=%08x dcfg=%08x vbus=%u soft=%u pullup=%u\n",
+		reason, dwc->gadget.state, dwc->gadget.speed,
+		DWC3_DSTS_USBLNKST(dsts), dsts, dctl, dcfg,
+		dwc->vbus_active, dwc->softconnect, dwc->pullups_connected);
+}
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -3114,6 +3136,17 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	u32			reg;
 
 	dwc->connected = true;
+
+	if (dwc3_dipper_configured_session(dwc)) {
+		dwc3_dipper_log_state(dwc,
+			"ignoring spurious configured-session USB reset");
+		dwc->b_suspend = false;
+		dwc->link_state = DWC3_LINK_STATE_U0;
+		dwc3_usb3_phy_suspend(dwc, false);
+		usb_gadget_vbus_draw(&dwc->gadget, 500);
+		wake_up_interruptible(&dwc->wait_linkstate);
+		return;
+	}
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
