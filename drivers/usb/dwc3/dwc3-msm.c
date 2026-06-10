@@ -401,6 +401,7 @@ static bool dwc3_msm_dipper_keep_active(struct dwc3_msm *mdwc,
 					struct dwc3 *dwc)
 {
 	return mdwc->dipper_keep_device_session &&
+		!mdwc->in_restart &&
 		mdwc->in_device_mode &&
 		mdwc->vbus_active &&
 		dwc->gadget.state == USB_STATE_CONFIGURED;
@@ -1643,10 +1644,13 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	unsigned int timeout = 50;
 
-	dev_dbg(mdwc->dev, "%s\n", __func__);
+	dev_info(mdwc->dev,
+		"%s: vbus=%u in_lpm=%d is_drd=%u gadget=%d speed=%d\n",
+		__func__, mdwc->vbus_active, atomic_read(&dwc->in_lpm),
+		dwc->is_drd, dwc->gadget.state, dwc->gadget.speed);
 
 	if (atomic_read(&dwc->in_lpm) || !dwc->is_drd) {
-		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
+		dev_info(mdwc->dev, "%s skipped\n", __func__);
 		return;
 	}
 
@@ -1677,6 +1681,9 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	}
 
 	mdwc->in_restart = false;
+	dev_info(mdwc->dev,
+		"%s: reconnect vbus=%u in_lpm=%d\n",
+		__func__, mdwc->vbus_active, atomic_read(&dwc->in_lpm));
 	/* Force reconnect only if cable is still connected */
 	if (mdwc->vbus_active)
 		dwc3_resume_work(&mdwc->resume_work);

@@ -62,6 +62,19 @@ static void dwc3_dipper_keep_usb2_phy_awake(struct dwc3 *dwc)
 	reg &= ~(DWC3_GUSB2PHYCFG_ENBLSLPM | DWC3_GUSB2PHYCFG_SUSPHY);
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 }
+
+static void dwc3_dipper_log_state(struct dwc3 *dwc, const char *reason)
+{
+	u32 dsts = dwc3_readl(dwc->regs, DWC3_DSTS);
+	u32 dctl = dwc3_readl(dwc->regs, DWC3_DCTL);
+	u32 dcfg = dwc3_readl(dwc->regs, DWC3_DCFG);
+
+	dev_info(dwc->dev,
+		"Dipper %s: gadget=%d speed=%d link=%d dsts=%08x dctl=%08x dcfg=%08x vbus=%u soft=%u pullup=%u\n",
+		reason, dwc->gadget.state, dwc->gadget.speed,
+		DWC3_DSTS_USBLNKST(dsts), dsts, dctl, dcfg,
+		dwc->vbus_active, dwc->softconnect, dwc->pullups_connected);
+}
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -3134,8 +3147,16 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
+	bool			dipper_configured_reset;
 
 	dwc->connected = true;
+	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
+
+	if (dipper_configured_reset) {
+		dwc3_dipper_log_state(dwc,
+			"configured-session USB reset, scheduling session restart");
+		dwc3_dipper_keep_usb2_phy_awake(dwc);
+	}
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
@@ -3174,7 +3195,8 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_OTG_EVENT, 0);
 
 	dwc3_usb3_phy_suspend(dwc, false);
-	usb_gadget_vbus_draw(&dwc->gadget, 100);
+	usb_gadget_vbus_draw(&dwc->gadget,
+			dipper_configured_reset ? 500 : 100);
 
 	dwc3_reset_gadget(dwc);
 
@@ -3212,6 +3234,9 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc->gadget.speed = USB_SPEED_UNKNOWN;
 	dwc->link_state = DWC3_LINK_STATE_U0;
 	wake_up_interruptible(&dwc->wait_linkstate);
+
+	if (dipper_configured_reset)
+		dwc3_notify_event(dwc, DWC3_CONTROLLER_RESTART_USB_SESSION, 0);
 }
 
 static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)

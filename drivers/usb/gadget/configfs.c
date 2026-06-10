@@ -1595,9 +1595,10 @@ static void android_reset(struct usb_gadget *gadget)
 	 * Bus reset is part of normal re-enumeration. Treating it as a cable
 	 * disconnect drops the Android connected bit and emits
 	 * USB_STATE=DISCONNECTED, which hides ADB/NCM on Dipper after a
-	 * transient DWC3 reset even though the gadget is still bound.
+	 * transient DWC3 reset even though the gadget is still bound. Keep
+	 * uevents quiet here; the next real SET_CONFIGURATION will emit
+	 * USB_STATE=CONFIGURED from android_setup().
 	 */
-	composite_disconnect(gadget);
 }
 #endif
 
