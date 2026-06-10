@@ -1581,6 +1581,25 @@ static void android_disconnect(struct usb_gadget *gadget)
 		schedule_work(&gi->work);
 	composite_disconnect(gadget);
 }
+
+static void android_reset(struct usb_gadget *gadget)
+{
+	struct usb_composite_dev *cdev = get_gadget_data(gadget);
+
+	if (!cdev) {
+		pr_err("%s: gadget is not connected\n", __func__);
+		return;
+	}
+
+	/*
+	 * DWC3 can raise bus reset while the cable is still attached. Treating
+	 * that as android_disconnect() sends USB_STATE=DISCONNECTED and hides
+	 * ADB/NCM from userspace even though the host is about to enumerate
+	 * again. Keep the software connected bit; composite_disconnect() still
+	 * tears down the old configuration before the next SET_CONFIGURATION.
+	 */
+	composite_disconnect(gadget);
+}
 #endif
 
 static const struct usb_gadget_driver configfs_driver_template = {
@@ -1588,7 +1607,7 @@ static const struct usb_gadget_driver configfs_driver_template = {
 	.unbind         = configfs_composite_unbind,
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 	.setup          = android_setup,
-	.reset          = android_disconnect,
+	.reset          = android_reset,
 	.disconnect     = android_disconnect,
 #else
 	.setup          = composite_setup,
