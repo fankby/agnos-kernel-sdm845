@@ -3512,15 +3512,6 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 			return;
 		}
 
-		if (dwc->dipper_keep_device_session) {
-			dev_info(dwc->dev,
-				"waking Dipper bus suspend while configured\n");
-			dwc3_suspend_gadget(dwc);
-			dwc->link_state = next;
-			dwc3_gadget_wakeup(&dwc->gadget);
-			return;
-		}
-
 		dwc3_suspend_gadget(dwc);
 
 		dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
