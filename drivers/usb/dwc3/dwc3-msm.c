@@ -2989,16 +2989,6 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 
 	dev_dbg(mdwc->dev, "vbus:%ld event received\n", event);
 
-	/*
-	 * Xiaomi Dipper can report a transient Type-C/VBUS detach after the
-	 * gadget has already enumerated as NCM+ADB. Keep the active device
-	 * session up so userspace ADB is not hidden behind a false disconnect.
-	 */
-	if (mdwc->dipper_keep_device_session && !event && mdwc->in_device_mode) {
-		dev_info(mdwc->dev, "ignoring transient Dipper VBUS detach in device mode\n");
-		return NOTIFY_DONE;
-	}
-
 	if (mdwc->vbus_active == event)
 		return NOTIFY_DONE;
 
@@ -3026,15 +3016,6 @@ static int dwc3_msm_eud_notifier(struct notifier_block *nb,
 
 	dbg_event(0xFF, "EUD_NB", event);
 	dev_dbg(mdwc->dev, "eud:%ld event received\n", event);
-
-	/*
-	 * EUD can deliver the same false detach path as VBUS on Dipper. Do not
-	 * stop an already-running gadget unless a host-mode transition asks for it.
-	 */
-	if (mdwc->dipper_keep_device_session && !event && mdwc->in_device_mode) {
-		dev_info(mdwc->dev, "ignoring transient Dipper EUD detach in device mode\n");
-		return NOTIFY_DONE;
-	}
 
 	if (mdwc->vbus_active == event)
 		return NOTIFY_DONE;

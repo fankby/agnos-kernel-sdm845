@@ -3474,12 +3474,6 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 		break;
 	case DWC3_LINK_STATE_U2:
 	case DWC3_LINK_STATE_U3:
-		if (dwc->dipper_keep_device_session &&
-		    dwc->gadget.state == USB_STATE_CONFIGURED) {
-			dev_info(dwc->dev,
-				"keeping Dipper gadget functions active on link suspend\n");
-			break;
-		}
 		dwc3_suspend_gadget(dwc);
 		break;
 	case DWC3_LINK_STATE_RESUME:
@@ -3520,7 +3514,8 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 
 		if (dwc->dipper_keep_device_session) {
 			dev_info(dwc->dev,
-				"keeping Dipper gadget functions active on bus suspend\n");
+				"waking Dipper bus suspend while configured\n");
+			dwc3_suspend_gadget(dwc);
 			dwc->link_state = next;
 			dwc3_gadget_wakeup(&dwc->gadget);
 			return;
