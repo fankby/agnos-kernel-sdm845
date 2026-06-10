@@ -397,6 +397,22 @@ static inline void dwc3_msm_write_readback(void __iomem *base, u32 offset,
 			__func__, val, offset);
 }
 
+static bool dwc3_msm_dipper_keep_active(struct dwc3_msm *mdwc,
+					struct dwc3 *dwc)
+{
+	return mdwc->dipper_keep_device_session &&
+		mdwc->in_device_mode &&
+		mdwc->vbus_active &&
+		dwc->gadget.state == USB_STATE_CONFIGURED;
+}
+
+static void dwc3_msm_dipper_keep_usb2_phy_awake(struct dwc3_msm *mdwc)
+{
+	dwc3_msm_write_reg(mdwc->base, DWC3_GUSB2PHYCFG(0),
+		dwc3_msm_read_reg(mdwc->base, DWC3_GUSB2PHYCFG(0)) &
+		~(DWC3_GUSB2PHYCFG_ENBLSLPM | DWC3_GUSB2PHYCFG_SUSPHY));
+}
+
 static bool dwc3_msm_is_ss_rhport_connected(struct dwc3_msm *mdwc)
 {
 	int i, num_ports;
@@ -1916,6 +1932,16 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		break;
 	case DWC3_CONTROLLER_NOTIFY_OTG_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_OTG_EVENT received\n");
+		if (dwc3_msm_dipper_keep_active(mdwc, dwc) &&
+		    dwc->b_suspend) {
+			dev_info(mdwc->dev,
+				"keeping Dipper configured USB device out of bus suspend\n");
+			dwc->b_suspend = false;
+			mdwc->suspend = false;
+			dwc3_msm_dipper_keep_usb2_phy_awake(mdwc);
+			break;
+		}
+
 		if (dwc->enable_bus_suspend) {
 			mdwc->suspend = dwc->b_suspend;
 			queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
@@ -2320,6 +2346,14 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool hibernation)
 		pr_err("%s(): Trying to go in LPM with state:%d\n",
 					__func__, dwc->gadget.state);
 		pr_err("%s(): LPM is not performed.\n", __func__);
+		mutex_unlock(&mdwc->suspend_resume_mutex);
+		return -EBUSY;
+	}
+
+	if (dwc3_msm_dipper_keep_active(mdwc, dwc)) {
+		dev_info(mdwc->dev,
+			"refusing Dipper configured USB device LPM suspend\n");
+		dwc3_msm_dipper_keep_usb2_phy_awake(mdwc);
 		mutex_unlock(&mdwc->suspend_resume_mutex);
 		return -EBUSY;
 	}
