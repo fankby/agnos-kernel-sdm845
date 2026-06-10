@@ -284,7 +284,6 @@
 			qcom,fg-esr-timer-asleep = <256 256>;
 			qcom,fg-esr-timer-charging = <0 96>;
 			qcom,cycle-counter-en;
-			qcom,hold-soc-while-full;
 			qcom,fg-auto-recharge-soc;
 			qcom,fg-recharge-soc-thr = <98>;
 			status = "okay";
@@ -340,12 +339,6 @@
 						  "dma-grant";
 			};
 		};
-
-		qcom,fan@c400 {
-			compatible = "qcom,qpnp-fan";
-			reg = <0xc400 0x100>;
-			pwms = <&pmi8998_pwm_2 0 0>;
-		};
 	};
 
 	pmi8998_lsid1: qcom,pmi8998@3 {
@@ -379,7 +372,7 @@
 			qcom,supported-sizes = <6>, <9>;
 			qcom,ramp-index = <1>;
 			#pwm-cells = <2>;
-			status = "okay";
+			status = "disabled";
 		};
 
 		pmi8998_pwm_3: pwm@b300 {
@@ -583,7 +576,6 @@
 			qcom,en-ext-pfet-sc-pro;
 			qcom,pmic-revid = <&pmi8998_revid>;
 			qcom,loop-auto-gm-en;
-			qcom,auto-calibration-enable;
 			status = "disabled";
 		};
 
@@ -649,10 +641,10 @@
 			pmi8998_torch0: qcom,torch_0 {
 				label = "torch";
 				qcom,led-name = "led:torch_0";
-				qcom,max-current = <500>;
+				qcom,max-current = <300>;
 				qcom,default-led-trigger = "torch0_trigger";
 				qcom,id = <0>;
-				qcom,current-ma = <300>;
+				qcom,current-ma = <75>;
 				qcom,ires-ua = <12500>;
 				qcom,hdrm-voltage-mv = <325>;
 				qcom,hdrm-vol-hi-lo-win-mv = <100>;
@@ -661,10 +653,10 @@
 			pmi8998_torch1: qcom,torch_1 {
 				label = "torch";
 				qcom,led-name = "led:torch_1";
-				qcom,max-current = <500>;
+				qcom,max-current = <300>;
 				qcom,default-led-trigger = "torch1_trigger";
 				qcom,id = <1>;
-				qcom,current-ma = <300>;
+				qcom,current-ma = <75>;
 				qcom,ires-ua = <12500>;
 				qcom,hdrm-voltage-mv = <325>;
 				qcom,hdrm-vol-hi-lo-win-mv = <100>;

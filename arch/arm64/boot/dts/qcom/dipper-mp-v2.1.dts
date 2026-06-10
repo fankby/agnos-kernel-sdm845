@@ -1,0 +1,46 @@
+/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+
+#include "sdm845-v2.1.dtsi"
+#include "sdm845-sde-display.dtsi"
+#include "dipper-mp-pinctrl.dtsi"
+#include "dipper-mp.dtsi"
+#include "dipper-audio-overlay.dtsi"
+
+/ {
+	model = "comma tizi";
+	compatible = "qcom,sdm845-mtp", "qcom,sdm845", "qcom,mtp";
+	qcom,board-id = <55 0>;
+};
+
+/* AGNOS userspace reads comma,gpio-som-id to choose display/touch origin.
+ * Xiaomi Dipper has no C3/Tizi SOM-ID GPIO straps, so provide a fixed ID in
+ * the board DTB instead of patching rootfs.
+ */
+&vendor {
+	gpio-som-id {
+		status = "okay";
+		compatible = "comma,gpio-som-id";
+		comma,fixed-som-id = <0>;
+	};
+};
+
+/* Dipper can report transient Type-C/VBUS detach or suspend after a valid
+ * configured ADB/NCM session. Keep the workaround opt-in at DT level.
+ */
+&usb0 {
+	qcom,dipper-keep-device-session;
+	qcom,disable-dev-mode-pm;
+};

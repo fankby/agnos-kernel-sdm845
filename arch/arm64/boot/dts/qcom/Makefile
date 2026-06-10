@@ -5,6 +5,7 @@
 dtb-$(CONFIG_ARCH_SDM845) += comma_tizi.dtb
 dtb-$(CONFIG_ARCH_SDM845) += comma_mici.dtb
 dtb-$(CONFIG_ARCH_SDM845) += comma_ultimate_provisioning.dtb
+dtb-$(CONFIG_ARCH_SDM845) += dipper-mp-v2.1.dtb
 
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)

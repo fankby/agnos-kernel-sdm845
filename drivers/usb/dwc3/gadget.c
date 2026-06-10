@@ -3073,6 +3073,19 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 {
 	int			reg;
 
+	/*
+	 * Xiaomi Dipper can raise a false disconnect about a minute after a
+	 * valid high-speed configuration. The host still sees the gadget shell,
+	 * but configfs marks the session disconnected and ADB disappears. Keep
+	 * the configured session alive; real unplug before configuration still
+	 * follows the normal disconnect path.
+	 */
+	if (dwc->dipper_keep_device_session &&
+	    dwc->gadget.state == USB_STATE_CONFIGURED) {
+		dev_info(dwc->dev, "ignoring Dipper gadget disconnect while configured\n");
+		return;
+	}
+
 	dbg_event(0xFF, "DISCONNECT INT", 0);
 	dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
 	dwc->b_suspend = false;
@@ -3496,6 +3509,15 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 		if (dwc->gadget.state != USB_STATE_CONFIGURED) {
 			pr_err("%s(): state:%d. Ignore SUSPEND.\n",
 						__func__, dwc->gadget.state);
+			return;
+		}
+
+		if (dwc->dipper_keep_device_session) {
+			dev_info(dwc->dev,
+				"waking Dipper bus suspend while configured\n");
+			dwc3_suspend_gadget(dwc);
+			dwc->link_state = next;
+			dwc3_gadget_wakeup(&dwc->gadget);
 			return;
 		}
 
