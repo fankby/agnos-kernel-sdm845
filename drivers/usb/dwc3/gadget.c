@@ -3122,8 +3122,12 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
+	bool			dipper_configured_reset;
 
 	dwc->connected = true;
+	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
+	if (dipper_configured_reset)
+		dwc3_dipper_keep_usb2_phy_awake(dwc);
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
@@ -3200,6 +3204,12 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc->gadget.speed = USB_SPEED_UNKNOWN;
 	dwc->link_state = DWC3_LINK_STATE_U0;
 	wake_up_interruptible(&dwc->wait_linkstate);
+
+	if (dipper_configured_reset) {
+		dev_info(dwc->dev,
+			"restarting Dipper USB session after configured reset\n");
+		dwc3_notify_event(dwc, DWC3_CONTROLLER_RESTART_USB_SESSION, 0);
+	}
 }
 
 static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)
