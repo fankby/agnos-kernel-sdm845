@@ -83,10 +83,16 @@ static void dwc3_dipper_rearm_ep0_after_reset(struct dwc3 *dwc)
 
 	/*
 	 * Dipper can deliver a reset while EP0 still looks like it is sitting
-	 * in SETUP phase, but its previous STARTTRANSFER bookkeeping is still
-	 * latched. Re-arm EP0 locally so the next host SETUP can be received
+	 * in SETUP phase, but the previous control STARTTRANSFER is still
+	 * latched in hardware. End any lingering EP0 transfer first, then
+	 * re-arm SETUP reception locally so the next host SETUP can arrive
 	 * without tearing down the whole gadget session.
 	 */
+	if ((ep0->flags & DWC3_EP_BUSY) || ep0->resource_index)
+		dwc3_ep0_end_control_data(dwc, ep0);
+	if ((ep1->flags & DWC3_EP_BUSY) || ep1->resource_index)
+		dwc3_ep0_end_control_data(dwc, ep1);
+
 	ep0->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
 			DWC3_EP_TRANSFER_STARTED | DWC3_EP0_DIR_IN);
 	ep1->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
