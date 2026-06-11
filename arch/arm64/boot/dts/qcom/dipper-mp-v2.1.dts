@@ -38,8 +38,10 @@
 	};
 };
 
-/* Dipper can report transient Type-C/VBUS detach or suspend after a valid
- * configured ADB/NCM session. Keep the workaround opt-in at DT level.
+/* Dipper's Type-C path can report charger/SDP state late during boot. Keep
+ * the initial peripheral session available, but let DWC3 handle real reset
+ * and disconnect events so ADB re-enumeration and host/Panda role switching
+ * remain clean.
  */
 &usb0 {
 	qcom,dipper-keep-device-session;
