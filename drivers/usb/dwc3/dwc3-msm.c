@@ -4309,11 +4309,11 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned int mA)
 
 	if (mdwc->dipper_keep_device_session &&
 	    mdwc->in_device_mode && mdwc->vbus_active &&
-	    mdwc->max_power >= 100 && mA && mA < 100) {
+	    mdwc->max_power >= 500 && mA && mA < mdwc->max_power) {
 		dev_info(mdwc->dev,
-			"Dipper keeping USB suspend current at 100 mA, ignoring %u mA\n",
-			mA);
-		mA = 100;
+			"Dipper keeping configured USB current %u mA, ignoring %u mA backoff\n",
+			mdwc->max_power, mA);
+		mA = mdwc->max_power;
 	}
 
 	if (mdwc->max_power == mA || psy_type != POWER_SUPPLY_TYPE_USB)

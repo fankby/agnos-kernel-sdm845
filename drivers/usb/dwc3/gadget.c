@@ -3122,10 +3122,8 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
-	bool			dipper_configured_reset;
 
 	dwc->connected = true;
-	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
@@ -3164,10 +3162,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_OTG_EVENT, 0);
 
 	dwc3_usb3_phy_suspend(dwc, false);
-	if (dipper_configured_reset)
-		dwc3_dipper_keep_usb2_phy_awake(dwc);
-	usb_gadget_vbus_draw(&dwc->gadget,
-			dipper_configured_reset ? 500 : 100);
+	usb_gadget_vbus_draw(&dwc->gadget, 100);
 
 	dwc3_reset_gadget(dwc);
 
@@ -3193,10 +3188,6 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 			dwc3_ep0_end_control_data(dwc, dwc->eps[!dir]);
 		dwc3_ep0_stall_and_restart(dwc);
 	}
-
-	if (dipper_configured_reset)
-		dev_info(dwc->dev,
-			"kept Dipper configured USB current through bus reset\n");
 
 	dwc3_stop_active_transfers(dwc);
 	dwc3_clear_stall_all_ep(dwc);
