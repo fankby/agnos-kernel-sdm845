@@ -1585,20 +1585,33 @@ static void android_disconnect(struct usb_gadget *gadget)
 static void android_reset(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev *cdev = get_gadget_data(gadget);
+	struct gadget_info *gi;
+	unsigned long flags;
 
 	if (!cdev) {
 		pr_err("%s: gadget is not connected\n", __func__);
 		return;
 	}
 
+	gi = container_of(cdev, struct gadget_info, cdev);
+
 	/*
-	 * Bus reset is part of normal re-enumeration. Treating it as a cable
-	 * disconnect drops the Android connected bit and emits
-	 * USB_STATE=DISCONNECTED, which hides ADB/NCM on Dipper after a
-	 * transient DWC3 reset even though the gadget is still bound. Keep
-	 * uevents quiet here; the next real SET_CONFIGURATION will emit
-	 * USB_STATE=CONFIGURED from android_setup().
+	 * Bus reset is part of normal re-enumeration. We still need the
+	 * composite layer to disable current functions so FunctionFS/ADB can
+	 * be cleanly re-enabled on the next SET_CONFIGURATION, but we must not
+	 * advertise it as a cable disconnect or clear gi->connected here.
 	 */
+	spin_lock_irqsave(&cdev->lock, flags);
+	if (cdev->config)
+		reset_config(cdev);
+	if (cdev->delayed_status != 0) {
+		pr_info("%s: delayed status mismatch..resetting\n", __func__);
+		cdev->delayed_status = 0;
+	}
+	spin_unlock_irqrestore(&cdev->lock, flags);
+
+	if (!gi->unbinding)
+		schedule_work(&gi->work);
 }
 #endif
 
