@@ -1667,6 +1667,7 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	dbg_event(0xFF, "RestartUSB", 0);
 	/* Reset active USB connection */
 	dwc3_resume_work(&mdwc->resume_work);
+	flush_delayed_work(&mdwc->sm_work);
 
 	/* Make sure disconnect is processed before sending connect */
 	while (--timeout && !pm_runtime_suspended(mdwc->dev))
