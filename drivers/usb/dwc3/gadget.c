@@ -63,6 +63,41 @@ static void dwc3_dipper_keep_usb2_phy_awake(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 }
 
+static void dwc3_dipper_rearm_ep0_after_reset(struct dwc3 *dwc)
+{
+	struct dwc3_ep *ep0 = dwc->eps[0];
+	struct dwc3_ep *ep1 = dwc->eps[1];
+
+	/*
+	 * Dipper may receive a bus reset while EP0 is already waiting for SETUP,
+	 * but the previous control STARTTRANSFER resource is still latched. Keep
+	 * the normal reset path intact, then restart SETUP reception explicitly.
+	 */
+	if ((ep0->flags & DWC3_EP_BUSY) || ep0->resource_index)
+		dwc3_ep0_end_control_data(dwc, ep0);
+	if ((ep1->flags & DWC3_EP_BUSY) || ep1->resource_index)
+		dwc3_ep0_end_control_data(dwc, ep1);
+
+	ep0->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
+			DWC3_EP_TRANSFER_STARTED | DWC3_EP0_DIR_IN);
+	ep1->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
+			DWC3_EP_TRANSFER_STARTED | DWC3_EP0_DIR_IN);
+	ep0->resource_index = 0;
+	ep1->resource_index = 0;
+	ep0->trb_dequeue = 0;
+	ep0->trb_enqueue = 0;
+	ep1->trb_dequeue = 0;
+	ep1->trb_enqueue = 0;
+	dwc->ep0_next_event = DWC3_EP0_COMPLETE;
+	dwc->ep0state = EP0_SETUP_PHASE;
+	dwc->ep0_expect_in = false;
+	dwc->three_stage_setup = false;
+	dwc->delayed_status = false;
+	dwc->setup_packet_pending = false;
+
+	dwc3_ep0_out_start(dwc);
+}
+
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -3122,8 +3157,11 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
+	bool			dipper_needs_ep0_rearm;
 
 	dwc->connected = true;
+	dipper_needs_ep0_rearm = dwc3_dipper_keep_configured_session(dwc) &&
+		dwc->ep0state == EP0_SETUP_PHASE;
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
@@ -3187,6 +3225,12 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 		else
 			dwc3_ep0_end_control_data(dwc, dwc->eps[!dir]);
 		dwc3_ep0_stall_and_restart(dwc);
+	}
+
+	if (dipper_needs_ep0_rearm) {
+		dwc3_dipper_rearm_ep0_after_reset(dwc);
+		dev_info(dwc->dev,
+			"re-armed Dipper EP0 after configured-session USB reset\n");
 	}
 
 	dwc3_stop_active_transfers(dwc);
