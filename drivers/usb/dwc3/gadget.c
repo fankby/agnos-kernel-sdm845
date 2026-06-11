@@ -3141,7 +3141,15 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
 
 	if (dipper_configured_reset) {
+		dev_info(dwc->dev,
+			"ignoring Dipper configured-session USB reset\n");
+		dwc->b_suspend = false;
+		dwc->link_state = DWC3_LINK_STATE_U0;
 		dwc3_dipper_keep_usb2_phy_awake(dwc);
+		dwc3_usb3_phy_suspend(dwc, false);
+		usb_gadget_vbus_draw(&dwc->gadget, 500);
+		wake_up_interruptible(&dwc->wait_linkstate);
+		return;
 	}
 
 	/*
