@@ -23,6 +23,7 @@
 	model = "comma tizi";
 	compatible = "qcom,sdm845-mtp", "qcom,sdm845", "qcom,mtp";
 	qcom,board-id = <55 0>;
+	qcom,dipper-agnos-imu-compat;
 };
 
 /* AGNOS userspace reads comma,gpio-som-id to choose display/touch origin.

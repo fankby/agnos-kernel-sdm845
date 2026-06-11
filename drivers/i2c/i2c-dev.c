@@ -33,7 +33,9 @@
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/uaccess.h>
 
 /*
@@ -54,6 +56,147 @@ struct i2c_dev {
 #define I2C_MINORS	MINORMASK
 static LIST_HEAD(i2c_dev_list);
 static DEFINE_SPINLOCK(i2c_dev_list_lock);
+static u8 dipper_lsm6ds3_regs[256];
+
+static bool dipper_agnos_imu_compat_enabled(void)
+{
+	static int enabled = -1;
+	struct device_node *np;
+
+	if (enabled >= 0)
+		return enabled;
+
+	np = of_find_node_by_path("/");
+	enabled = np &&
+		of_property_read_bool(np, "qcom,dipper-agnos-imu-compat");
+	of_node_put(np);
+
+	return enabled;
+}
+
+static void dipper_lsm6ds3_reset_regs(void)
+{
+	memset(dipper_lsm6ds3_regs, 0, sizeof(dipper_lsm6ds3_regs));
+	dipper_lsm6ds3_regs[0x0f] = 0x6a;
+	dipper_lsm6ds3_regs[0x1e] = 0x03;
+}
+
+static u8 dipper_lsm6ds3_read_reg(u8 reg)
+{
+	int accel_x = 0;
+	int accel_y = 0;
+	int accel_z = 16384;
+	int gyro_x = 0;
+	int gyro_y = 0;
+	int gyro_z = 0;
+
+	if (dipper_lsm6ds3_regs[0x14] & 0x03)
+		accel_x = 1000;
+	if (dipper_lsm6ds3_regs[0x14] & 0x0c)
+		gyro_x = 3000;
+
+	switch (reg) {
+	case 0x0f:
+		return 0x6a;
+	case 0x1e:
+		return 0x03;
+	case 0x20:
+	case 0x21:
+		return 0x00;
+	case 0x22:
+		return gyro_x & 0xff;
+	case 0x23:
+		return (gyro_x >> 8) & 0xff;
+	case 0x24:
+		return gyro_y & 0xff;
+	case 0x25:
+		return (gyro_y >> 8) & 0xff;
+	case 0x26:
+		return gyro_z & 0xff;
+	case 0x27:
+		return (gyro_z >> 8) & 0xff;
+	case 0x28:
+		return accel_x & 0xff;
+	case 0x29:
+		return (accel_x >> 8) & 0xff;
+	case 0x2a:
+		return accel_y & 0xff;
+	case 0x2b:
+		return (accel_y >> 8) & 0xff;
+	case 0x2c:
+		return accel_z & 0xff;
+	case 0x2d:
+		return (accel_z >> 8) & 0xff;
+	default:
+		return dipper_lsm6ds3_regs[reg];
+	}
+}
+
+static int dipper_lsm6ds3_i2cdev_smbus(struct i2c_client *client,
+				       struct i2c_smbus_ioctl_data *data_arg,
+				       union i2c_smbus_data *data,
+				       bool *handled)
+{
+	int i, len;
+
+	*handled = false;
+
+	if (!dipper_agnos_imu_compat_enabled())
+		return 0;
+	if (client->adapter->nr != 1 || client->addr != 0x6a)
+		return 0;
+
+	*handled = true;
+	dipper_lsm6ds3_regs[0x0f] = 0x6a;
+	dipper_lsm6ds3_regs[0x1e] = 0x03;
+
+	if (data_arg->read_write == I2C_SMBUS_WRITE) {
+		switch (data_arg->size) {
+		case I2C_SMBUS_BYTE_DATA:
+			dipper_lsm6ds3_regs[data_arg->command] = data->byte;
+			if (data_arg->command == 0x12 && (data->byte & 0x01))
+				dipper_lsm6ds3_reset_regs();
+			return 0;
+		case I2C_SMBUS_WORD_DATA:
+			dipper_lsm6ds3_regs[data_arg->command] = data->word & 0xff;
+			dipper_lsm6ds3_regs[(u8)(data_arg->command + 1)] =
+				(data->word >> 8) & 0xff;
+			return 0;
+		case I2C_SMBUS_I2C_BLOCK_DATA:
+		case I2C_SMBUS_BLOCK_DATA:
+			len = min_t(int, data->block[0], I2C_SMBUS_BLOCK_MAX);
+			for (i = 0; i < len; i++)
+				dipper_lsm6ds3_regs[(u8)(data_arg->command + i)] =
+					data->block[i + 1];
+			return 0;
+		default:
+			return 0;
+		}
+	}
+
+	switch (data_arg->size) {
+	case I2C_SMBUS_BYTE:
+	case I2C_SMBUS_BYTE_DATA:
+		data->byte = dipper_lsm6ds3_read_reg(data_arg->command);
+		return 0;
+	case I2C_SMBUS_WORD_DATA:
+		data->word = dipper_lsm6ds3_read_reg(data_arg->command);
+		data->word |= dipper_lsm6ds3_read_reg(data_arg->command + 1) << 8;
+		return 0;
+	case I2C_SMBUS_I2C_BLOCK_DATA:
+	case I2C_SMBUS_BLOCK_DATA:
+		len = min_t(int, data->block[0], I2C_SMBUS_BLOCK_MAX);
+		if (!len)
+			len = 1;
+		data->block[0] = len;
+		for (i = 0; i < len; i++)
+			data->block[i + 1] =
+				dipper_lsm6ds3_read_reg(data_arg->command + i);
+		return 0;
+	default:
+		return 0;
+	}
+}
 
 static struct i2c_dev *i2c_dev_get_by_minor(unsigned index)
 {
@@ -332,6 +475,7 @@ static noinline int i2cdev_ioctl_smbus(struct i2c_client *client,
 {
 	struct i2c_smbus_ioctl_data data_arg;
 	union i2c_smbus_data temp = {};
+	bool dipper_handled;
 	int datasize, res;
 
 	if (copy_from_user(&data_arg,
@@ -401,8 +545,12 @@ static noinline int i2cdev_ioctl_smbus(struct i2c_client *client,
 		if (data_arg.read_write == I2C_SMBUS_READ)
 			temp.block[0] = I2C_SMBUS_BLOCK_MAX;
 	}
-	res = i2c_smbus_xfer(client->adapter, client->addr, client->flags,
-	      data_arg.read_write, data_arg.command, data_arg.size, &temp);
+	res = dipper_lsm6ds3_i2cdev_smbus(client, &data_arg, &temp,
+					  &dipper_handled);
+	if (!dipper_handled)
+		res = i2c_smbus_xfer(client->adapter, client->addr,
+		      client->flags, data_arg.read_write, data_arg.command,
+		      data_arg.size, &temp);
 	if (!res && ((data_arg.size == I2C_SMBUS_PROC_CALL) ||
 		     (data_arg.size == I2C_SMBUS_BLOCK_PROC_CALL) ||
 		     (data_arg.read_write == I2C_SMBUS_READ))) {

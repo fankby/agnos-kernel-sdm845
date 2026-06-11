@@ -9,9 +9,11 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/gpio.h>
+#include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/idr.h>
 #include <linux/slab.h>
+#include <linux/timer.h>
 #include <linux/acpi.h>
 #include <linux/gpio/driver.h>
 #include <linux/gpio/machine.h>
@@ -572,6 +574,9 @@ struct lineevent_state {
 	wait_queue_head_t wait;
 	DECLARE_KFIFO(events, struct gpioevent_data, 16);
 	struct mutex read_lock;
+	bool dipper_fake_event;
+	bool dipper_fake_level;
+	struct timer_list dipper_fake_timer;
 };
 
 #define GPIOEVENT_REQUEST_VALID_FLAGS \
@@ -592,6 +597,61 @@ static unsigned int lineevent_poll(struct file *filep,
 	return events;
 }
 
+static bool dipper_agnos_imu_compat_enabled(void)
+{
+	static int enabled = -1;
+	struct device_node *np;
+
+	if (enabled >= 0)
+		return enabled;
+
+	np = of_find_node_by_path("/");
+	enabled = np &&
+		of_property_read_bool(np, "qcom,dipper-agnos-imu-compat");
+	of_node_put(np);
+
+	return enabled;
+}
+
+static bool dipper_lineevent_should_fake(struct gpio_device *gdev,
+					 struct gpioevent_request *eventreq)
+{
+	if (!dipper_agnos_imu_compat_enabled())
+		return false;
+	if (gdev->id != 0 || eventreq->lineoffset != 84)
+		return false;
+
+	return !strcmp(eventreq->consumer_label, "sensord");
+}
+
+static void dipper_lineevent_timer(unsigned long data)
+{
+	struct lineevent_state *le = (struct lineevent_state *)data;
+	struct gpioevent_data ge;
+	int ret;
+
+	memset(&ge, 0, sizeof(ge));
+	ge.timestamp = ktime_get_real_ns();
+
+	le->dipper_fake_level = !le->dipper_fake_level;
+	if (le->dipper_fake_level)
+		ge.id = GPIOEVENT_EVENT_RISING_EDGE;
+	else
+		ge.id = GPIOEVENT_EVENT_FALLING_EDGE;
+
+	if ((ge.id == GPIOEVENT_EVENT_RISING_EDGE &&
+	     !(le->eflags & GPIOEVENT_REQUEST_RISING_EDGE)) ||
+	    (ge.id == GPIOEVENT_EVENT_FALLING_EDGE &&
+	     !(le->eflags & GPIOEVENT_REQUEST_FALLING_EDGE)))
+		goto out_restart;
+
+	ret = kfifo_put(&le->events, ge);
+	if (ret != 0)
+		wake_up_poll(&le->wait, POLLIN);
+
+out_restart:
+	mod_timer(&le->dipper_fake_timer, jiffies + msecs_to_jiffies(10));
+}
 
 static ssize_t lineevent_read(struct file *filep,
 			      char __user *buf,
@@ -643,8 +703,12 @@ static int lineevent_release(struct inode *inode, struct file *filep)
 	struct lineevent_state *le = filep->private_data;
 	struct gpio_device *gdev = le->gdev;
 
-	free_irq(le->irq, le);
-	gpiod_free(le->desc);
+	if (le->dipper_fake_event)
+		del_timer_sync(&le->dipper_fake_timer);
+	else
+		free_irq(le->irq, le);
+	if (le->desc)
+		gpiod_free(le->desc);
 	kfree(le->label);
 	kfree(le);
 	put_device(&gdev->dev);
@@ -792,12 +856,51 @@ static int lineevent_create(struct gpio_device *gdev, void __user *ip)
 		goto out_free_label;
 	}
 
+	le->eflags = eflags;
+
+	INIT_KFIFO(le->events);
+	init_waitqueue_head(&le->wait);
+	mutex_init(&le->read_lock);
+
+	if (dipper_lineevent_should_fake(gdev, &eventreq)) {
+		le->dipper_fake_event = true;
+		setup_timer(&le->dipper_fake_timer, dipper_lineevent_timer,
+			    (unsigned long)le);
+
+		fd = get_unused_fd_flags(O_RDONLY | O_CLOEXEC);
+		if (fd < 0) {
+			ret = fd;
+			goto out_free_label;
+		}
+
+		file = anon_inode_getfile("gpio-event",
+					  &lineevent_fileops,
+					  le,
+					  O_RDONLY | O_CLOEXEC);
+		if (IS_ERR(file)) {
+			ret = PTR_ERR(file);
+			goto out_put_unused_fd;
+		}
+
+		eventreq.fd = fd;
+		if (copy_to_user(ip, &eventreq, sizeof(eventreq))) {
+			fput(file);
+			put_unused_fd(fd);
+			return -EFAULT;
+		}
+
+		fd_install(fd, file);
+		mod_timer(&le->dipper_fake_timer,
+			  jiffies + msecs_to_jiffies(10));
+
+		return 0;
+	}
+
 	desc = &gdev->descs[offset];
 	ret = gpiod_request(desc, le->label);
 	if (ret)
 		goto out_free_label;
 	le->desc = desc;
-	le->eflags = eflags;
 
 	if (lflags & GPIOHANDLE_REQUEST_ACTIVE_LOW)
 		set_bit(FLAG_ACTIVE_LOW, &desc->flags);
@@ -822,10 +925,6 @@ static int lineevent_create(struct gpio_device *gdev, void __user *ip)
 		irqflags |= IRQF_TRIGGER_FALLING;
 	irqflags |= IRQF_ONESHOT;
 	irqflags |= IRQF_SHARED;
-
-	INIT_KFIFO(le->events);
-	init_waitqueue_head(&le->wait);
-	mutex_init(&le->read_lock);
 
 	/* Request a thread to read the events */
 	ret = request_threaded_irq(le->irq,
@@ -870,9 +969,11 @@ static int lineevent_create(struct gpio_device *gdev, void __user *ip)
 out_put_unused_fd:
 	put_unused_fd(fd);
 out_free_irq:
-	free_irq(le->irq, le);
+	if (!le->dipper_fake_event)
+		free_irq(le->irq, le);
 out_free_desc:
-	gpiod_free(le->desc);
+	if (le->desc)
+		gpiod_free(le->desc);
 out_free_label:
 	kfree(le->label);
 out_free_le:
