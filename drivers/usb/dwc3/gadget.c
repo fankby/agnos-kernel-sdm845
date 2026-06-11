@@ -63,54 +63,6 @@ static void dwc3_dipper_keep_usb2_phy_awake(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 }
 
-static void dwc3_dipper_log_state(struct dwc3 *dwc, const char *reason)
-{
-	u32 dsts = dwc3_readl(dwc->regs, DWC3_DSTS);
-	u32 dctl = dwc3_readl(dwc->regs, DWC3_DCTL);
-	u32 dcfg = dwc3_readl(dwc->regs, DWC3_DCFG);
-
-	dev_info(dwc->dev,
-		"Dipper %s: gadget=%d speed=%d link=%d dsts=%08x dctl=%08x dcfg=%08x vbus=%u soft=%u pullup=%u\n",
-		reason, dwc->gadget.state, dwc->gadget.speed,
-		DWC3_DSTS_USBLNKST(dsts), dsts, dctl, dcfg,
-		dwc->vbus_active, dwc->softconnect, dwc->pullups_connected);
-}
-
-static void dwc3_dipper_rearm_ep0_after_reset(struct dwc3 *dwc)
-{
-	struct dwc3_ep *ep0 = dwc->eps[0];
-	struct dwc3_ep *ep1 = dwc->eps[1];
-
-	/*
-	 * Dipper can deliver a reset while EP0 still looks like it is sitting
-	 * in SETUP phase, but the previous control STARTTRANSFER is still
-	 * latched in hardware. End any lingering EP0 transfer first, then
-	 * re-arm SETUP reception locally so the next host SETUP can arrive
-	 * without tearing down the whole gadget session.
-	 */
-	if ((ep0->flags & DWC3_EP_BUSY) || ep0->resource_index)
-		dwc3_ep0_end_control_data(dwc, ep0);
-	if ((ep1->flags & DWC3_EP_BUSY) || ep1->resource_index)
-		dwc3_ep0_end_control_data(dwc, ep1);
-
-	ep0->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
-			DWC3_EP_TRANSFER_STARTED | DWC3_EP0_DIR_IN);
-	ep1->flags &= ~(DWC3_EP_BUSY | DWC3_EP_PENDING_REQUEST |
-			DWC3_EP_TRANSFER_STARTED | DWC3_EP0_DIR_IN);
-	ep0->resource_index = 0;
-	ep1->resource_index = 0;
-	ep0->trb_dequeue = 0;
-	ep0->trb_enqueue = 0;
-	ep1->trb_dequeue = 0;
-	ep1->trb_enqueue = 0;
-	dwc->ep0_next_event = DWC3_EP0_COMPLETE;
-	dwc->ep0state = EP0_SETUP_PHASE;
-	dwc->ep0_expect_in = false;
-	dwc->three_stage_setup = false;
-	dwc->delayed_status = false;
-	dwc->setup_packet_pending = false;
-	dwc3_ep0_out_start(dwc);
-}
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -3184,16 +3136,11 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
 	bool			dipper_configured_reset;
-	bool			dipper_needs_ep0_rearm;
 
 	dwc->connected = true;
 	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
-	dipper_needs_ep0_rearm = dipper_configured_reset &&
-		dwc->ep0state == EP0_SETUP_PHASE;
 
 	if (dipper_configured_reset) {
-		dwc3_dipper_log_state(dwc,
-			"configured-session USB reset, keeping local reset");
 		dwc3_dipper_keep_usb2_phy_awake(dwc);
 	}
 
@@ -3260,12 +3207,6 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 		else
 			dwc3_ep0_end_control_data(dwc, dwc->eps[!dir]);
 		dwc3_ep0_stall_and_restart(dwc);
-	}
-
-	if (dipper_needs_ep0_rearm) {
-		dwc3_dipper_rearm_ep0_after_reset(dwc);
-		dwc3_dipper_log_state(dwc,
-			"re-armed EP0 after configured-session USB reset");
 	}
 
 	dwc3_stop_active_transfers(dwc);

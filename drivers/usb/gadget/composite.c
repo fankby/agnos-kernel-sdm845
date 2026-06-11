@@ -877,6 +877,23 @@ static void reset_config(struct usb_composite_dev *cdev)
 	cdev->delayed_status = 0;
 }
 
+void composite_reset_config(struct usb_composite_dev *cdev)
+{
+	unsigned long flags;
+
+	if (!cdev)
+		return;
+
+	spin_lock_irqsave(&cdev->lock, flags);
+	if (cdev->config)
+		reset_config(cdev);
+	if (cdev->delayed_status != 0) {
+		INFO(cdev, "delayed status mismatch..resetting\n");
+		cdev->delayed_status = 0;
+	}
+	spin_unlock_irqrestore(&cdev->lock, flags);
+}
+
 static int set_config(struct usb_composite_dev *cdev,
 		const struct usb_ctrlrequest *ctrl, unsigned number)
 {

@@ -1585,11 +1585,14 @@ static void android_disconnect(struct usb_gadget *gadget)
 static void android_reset(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev *cdev = get_gadget_data(gadget);
+	struct gadget_info *gi;
 
 	if (!cdev) {
 		pr_err("%s: gadget is not connected\n", __func__);
 		return;
 	}
+
+	gi = container_of(cdev, struct gadget_info, cdev);
 
 	/*
 	 * Bus reset is part of normal re-enumeration. We still need the
@@ -1597,7 +1600,9 @@ static void android_reset(struct usb_gadget *gadget)
 	 * be cleanly re-enabled on the next SET_CONFIGURATION, but we must not
 	 * advertise it as a cable disconnect or clear gi->connected here.
 	 */
-	composite_disconnect(gadget);
+	composite_reset_config(cdev);
+	if (!gi->unbinding)
+		schedule_work(&gi->work);
 }
 #endif
 
