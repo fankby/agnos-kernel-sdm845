@@ -906,8 +906,8 @@ struct dwc3_scratchpad_array {
  * @test_mode_nr: test feature selector
  * @lpm_nyet_threshold: LPM NYET response threshold
  * @hird_threshold: HIRD threshold
- * @dipper_keep_device_session: ignore Dipper's false configured-session
- *		disconnect event while a host is still attached.
+ * @dipper_keep_device_session: keep Dipper's initial peripheral session from
+ *		being torn down by false charger/SDP detection.
  * @hsphy_interface: "utmi" or "ulpi"
  * @connected: true when we're connected to a host, false otherwise
  * @delayed_status: true when gadget driver asks for delayed status
