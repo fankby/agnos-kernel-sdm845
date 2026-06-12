@@ -41,28 +41,6 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup);
 static int dwc3_gadget_wakeup_int(struct dwc3 *dwc);
 static void dwc3_stop_active_transfers(struct dwc3 *dwc);
 
-static bool dwc3_dipper_keep_configured_session(struct dwc3 *dwc)
-{
-	return dwc->dipper_keep_device_session &&
-		dwc->vbus_active &&
-		dwc->softconnect &&
-		dwc->pullups_connected &&
-		dwc->gadget.state == USB_STATE_CONFIGURED;
-}
-
-static void dwc3_dipper_keep_usb2_phy_awake(struct dwc3 *dwc)
-{
-	u32 reg;
-
-	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
-	reg &= ~DWC3_DCFG_LPM_CAP;
-	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
-
-	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
-	reg &= ~(DWC3_GUSB2PHYCFG_ENBLSLPM | DWC3_GUSB2PHYCFG_SUSPHY);
-	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
-}
-
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -3122,12 +3100,8 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
-	bool			dipper_configured_reset;
 
 	dwc->connected = true;
-	dipper_configured_reset = dwc3_dipper_keep_configured_session(dwc);
-	if (dipper_configured_reset)
-		dwc3_dipper_keep_usb2_phy_awake(dwc);
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
@@ -3204,7 +3178,6 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc->gadget.speed = USB_SPEED_UNKNOWN;
 	dwc->link_state = DWC3_LINK_STATE_U0;
 	wake_up_interruptible(&dwc->wait_linkstate);
-
 }
 
 static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)

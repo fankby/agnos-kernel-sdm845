@@ -397,23 +397,6 @@ static inline void dwc3_msm_write_readback(void __iomem *base, u32 offset,
 			__func__, val, offset);
 }
 
-static bool dwc3_msm_dipper_keep_active(struct dwc3_msm *mdwc,
-					struct dwc3 *dwc)
-{
-	return mdwc->dipper_keep_device_session &&
-		!mdwc->in_restart &&
-		mdwc->in_device_mode &&
-		mdwc->vbus_active &&
-		dwc->gadget.state == USB_STATE_CONFIGURED;
-}
-
-static void dwc3_msm_dipper_keep_usb2_phy_awake(struct dwc3_msm *mdwc)
-{
-	dwc3_msm_write_reg(mdwc->base, DWC3_GUSB2PHYCFG(0),
-		dwc3_msm_read_reg(mdwc->base, DWC3_GUSB2PHYCFG(0)) &
-		~(DWC3_GUSB2PHYCFG_ENBLSLPM | DWC3_GUSB2PHYCFG_SUSPHY));
-}
-
 static bool dwc3_msm_is_ss_rhport_connected(struct dwc3_msm *mdwc)
 {
 	int i, num_ports;
@@ -1644,13 +1627,8 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	unsigned int timeout = 50;
 
-	dev_info(mdwc->dev,
-		"%s: vbus=%u in_lpm=%d is_drd=%u gadget=%d speed=%d\n",
-		__func__, mdwc->vbus_active, atomic_read(&dwc->in_lpm),
-		dwc->is_drd, dwc->gadget.state, dwc->gadget.speed);
-
 	if (atomic_read(&dwc->in_lpm) || !dwc->is_drd) {
-		dev_info(mdwc->dev, "%s skipped\n", __func__);
+		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
 		return;
 	}
 
@@ -1667,7 +1645,6 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	dbg_event(0xFF, "RestartUSB", 0);
 	/* Reset active USB connection */
 	dwc3_resume_work(&mdwc->resume_work);
-	flush_delayed_work(&mdwc->sm_work);
 
 	/* Make sure disconnect is processed before sending connect */
 	while (--timeout && !pm_runtime_suspended(mdwc->dev))
@@ -1682,9 +1659,6 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	}
 
 	mdwc->in_restart = false;
-	dev_info(mdwc->dev,
-		"%s: reconnect vbus=%u in_lpm=%d\n",
-		__func__, mdwc->vbus_active, atomic_read(&dwc->in_lpm));
 	/* Force reconnect only if cable is still connected */
 	if (mdwc->vbus_active)
 		dwc3_resume_work(&mdwc->resume_work);
@@ -2344,14 +2318,6 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool hibernation)
 		pr_err("%s(): Trying to go in LPM with state:%d\n",
 					__func__, dwc->gadget.state);
 		pr_err("%s(): LPM is not performed.\n", __func__);
-		mutex_unlock(&mdwc->suspend_resume_mutex);
-		return -EBUSY;
-	}
-
-	if (dwc3_msm_dipper_keep_active(mdwc, dwc)) {
-		dev_info(mdwc->dev,
-			"refusing Dipper configured USB device LPM suspend\n");
-		dwc3_msm_dipper_keep_usb2_phy_awake(mdwc);
 		mutex_unlock(&mdwc->suspend_resume_mutex);
 		return -EBUSY;
 	}
@@ -4306,12 +4272,12 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned int mA)
 	}
 
 	if (mdwc->dipper_keep_device_session &&
-	    mdwc->max_power >= 500 && mA < mdwc->max_power &&
-	    (mdwc->in_restart || (mdwc->vbus_active && mA))) {
+	    mdwc->in_device_mode && mdwc->vbus_active &&
+	    mdwc->max_power >= 100 && mA && mA < 100) {
 		dev_info(mdwc->dev,
-			"Dipper keeping configured USB current %u mA, ignoring %u mA backoff\n",
-			mdwc->max_power, mA);
-		mA = mdwc->max_power;
+			"Dipper keeping USB suspend current at 100 mA, ignoring %u mA\n",
+			mA);
+		mA = 100;
 	}
 
 	if (mdwc->max_power == mA || psy_type != POWER_SUPPLY_TYPE_USB)

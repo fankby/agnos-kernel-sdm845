@@ -38,12 +38,16 @@
 	};
 };
 
-/* Dipper's Type-C path can report charger/SDP state late during boot. Keep
- * the initial peripheral session available, but let DWC3 handle real reset
- * and disconnect events so ADB re-enumeration and host/Panda role switching
- * remain clean.
+/* Dipper does not need USB-PD for AGNOS/openpilot. Let SMB2's charger/type-C
+ * extcon own both peripheral VBUS and host ID events so PD error recovery
+ * cannot hard-disconnect an active ADB/Panda session.
  */
+&pmi8998_charger {
+	qcom,use-extcon;
+};
+
 &usb0 {
+	extcon = <&pmi8998_charger>, <&pmi8998_charger>, <&eud>;
 	qcom,dipper-keep-device-session;
 	qcom,disable-dev-mode-pm;
 
