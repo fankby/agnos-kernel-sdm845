@@ -3205,11 +3205,6 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	dwc->link_state = DWC3_LINK_STATE_U0;
 	wake_up_interruptible(&dwc->wait_linkstate);
 
-	if (dipper_configured_reset) {
-		dev_info(dwc->dev,
-			"restarting Dipper USB session after configured reset\n");
-		dwc3_notify_event(dwc, DWC3_CONTROLLER_RESTART_USB_SESSION, 0);
-	}
 }
 
 static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)
@@ -3499,17 +3494,6 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 		break;
 	case DWC3_LINK_STATE_U2:
 	case DWC3_LINK_STATE_U3:
-		if (dwc3_dipper_keep_configured_session(dwc)) {
-			dev_info(dwc->dev,
-				"keeping Dipper configured USB session out of link suspend U%d\n",
-				next);
-			dwc->b_suspend = false;
-			dwc->link_state = DWC3_LINK_STATE_U0;
-			dwc3_dipper_keep_usb2_phy_awake(dwc);
-			wake_up_interruptible(&dwc->wait_linkstate);
-			return;
-		}
-
 		dwc3_suspend_gadget(dwc);
 		break;
 	case DWC3_LINK_STATE_RESUME:
@@ -3545,18 +3529,6 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 		if (dwc->gadget.state != USB_STATE_CONFIGURED) {
 			pr_err("%s(): state:%d. Ignore SUSPEND.\n",
 						__func__, dwc->gadget.state);
-			return;
-		}
-
-		if (dwc3_dipper_keep_configured_session(dwc)) {
-			dev_info(dwc->dev,
-				"keeping Dipper configured USB session out of bus suspend\n");
-			dwc->b_suspend = false;
-			dwc->link_state = DWC3_LINK_STATE_U0;
-			dwc3_dipper_keep_usb2_phy_awake(dwc);
-			dwc3_usb3_phy_suspend(dwc, false);
-			usb_gadget_vbus_draw(&dwc->gadget, 500);
-			wake_up_interruptible(&dwc->wait_linkstate);
 			return;
 		}
 

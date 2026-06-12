@@ -1940,16 +1940,6 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		break;
 	case DWC3_CONTROLLER_NOTIFY_OTG_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_OTG_EVENT received\n");
-		if (dwc3_msm_dipper_keep_active(mdwc, dwc) &&
-		    dwc->b_suspend) {
-			dev_info(mdwc->dev,
-				"refusing Dipper configured USB OTG bus suspend\n");
-			dwc->b_suspend = false;
-			mdwc->suspend = false;
-			dwc3_msm_dipper_keep_usb2_phy_awake(mdwc);
-			break;
-		}
-
 		if (dwc->enable_bus_suspend) {
 			mdwc->suspend = dwc->b_suspend;
 			queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
@@ -1961,14 +1951,6 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		break;
 	case DWC3_CONTROLLER_RESTART_USB_SESSION:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_RESTART_USB_SESSION received\n");
-		if (mdwc->dipper_keep_device_session && dwc->is_drd) {
-			dev_info(mdwc->dev,
-				"resetting Dipper DWC3 core before USB session restart\n");
-			dwc3_gadget_disable_irq(dwc);
-			reg = dwc3_msm_read_reg(mdwc->base, DWC3_GCTL);
-			reg |= DWC3_GCTL_CORESOFTRESET;
-			dwc3_msm_write_reg(mdwc->base, DWC3_GCTL, reg);
-		}
 		schedule_work(&mdwc->restart_usb_work);
 		break;
 	case DWC3_GSI_EVT_BUF_ALLOC:
