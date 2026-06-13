@@ -906,8 +906,6 @@ struct dwc3_scratchpad_array {
  * @test_mode_nr: test feature selector
  * @lpm_nyet_threshold: LPM NYET response threshold
  * @hird_threshold: HIRD threshold
- * @dipper_keep_device_session: keep Dipper's initial peripheral session from
- *		being torn down by false charger/SDP detection.
  * @hsphy_interface: "utmi" or "ulpi"
  * @connected: true when we're connected to a host, false otherwise
  * @delayed_status: true when gadget driver asks for delayed status
@@ -1134,7 +1132,6 @@ struct dwc3 {
 	unsigned		vbus_active:1;
 	/* Indicate if software connect was issued by the usb_gadget_driver */
 	unsigned		softconnect:1;
-	unsigned		dipper_keep_device_session:1;
 	unsigned		err_evt_seen:1;
 	/* Indicate if need to disable controller internal clkgating */
 	unsigned		disable_clk_gating:1;

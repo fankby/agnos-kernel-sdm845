@@ -48,12 +48,4 @@
 
 &usb0 {
 	extcon = <&pmi8998_charger>, <&pmi8998_charger>, <&eud>;
-	qcom,dipper-keep-device-session;
-	qcom,disable-dev-mode-pm;
-
-	dwc3@a600000 {
-		snps,usb2-l1-disable;
-		snps,dis_u2_susphy_quirk;
-		snps,dis_enblslpm_quirk;
-	};
 };

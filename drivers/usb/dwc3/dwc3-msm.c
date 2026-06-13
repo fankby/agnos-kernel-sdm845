@@ -271,7 +271,6 @@ struct dwc3_msm {
 	struct delayed_work perf_vote_work;
 	struct delayed_work sdp_check;
 	bool usb_compliance_mode;
-	bool dipper_keep_device_session;
 	struct mutex suspend_resume_mutex;
 
 	enum usb_device_speed override_usb_speed;
@@ -1627,6 +1626,8 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	unsigned int timeout = 50;
 
+	dev_dbg(mdwc->dev, "%s\n", __func__);
+
 	if (atomic_read(&dwc->in_lpm) || !dwc->is_drd) {
 		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
 		return;
@@ -2960,9 +2961,6 @@ static void check_for_sdp_connection(struct work_struct *w)
 	if (!mdwc->vbus_active)
 		return;
 
-	if (mdwc->dipper_keep_device_session)
-		return;
-
 	/* USB 3.1 compliance equipment usually repoted as floating
 	 * charger as HS dp/dm lines are never connected. Do not
 	 * tear down USB stack if compliance parameter is set
@@ -3014,7 +3012,6 @@ static int dwc3_msm_eud_notifier(struct notifier_block *nb,
 
 	dbg_event(0xFF, "EUD_NB", event);
 	dev_dbg(mdwc->dev, "eud:%ld event received\n", event);
-
 	if (mdwc->vbus_active == event)
 		return NOTIFY_DONE;
 
@@ -3657,10 +3654,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	mdwc->no_vbus_vote_type_c = of_property_read_bool(node,
 					"qcom,no-vbus-vote-with-type-C");
 
-	mdwc->dipper_keep_device_session = of_property_read_bool(node,
-					"qcom,dipper-keep-device-session");
-	dwc->dipper_keep_device_session = mdwc->dipper_keep_device_session;
-
 	mutex_init(&mdwc->suspend_resume_mutex);
 	/* Mark type-C as true by default */
 	mdwc->type_c = true;
@@ -3700,12 +3693,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		/* USB cable is not connected */
 		schedule_delayed_work(&mdwc->sm_work, 0);
 	} else {
-		if (pval.intval > 0 && mdwc->dipper_keep_device_session) {
-			dev_info(mdwc->dev, "Dipper forcing initial peripheral session while charger detection is in progress\n");
-			mdwc->vbus_active = true;
-			mdwc->id_state = DWC3_ID_FLOAT;
-			dwc3_ext_event_notify(mdwc);
-		} else if (pval.intval > 0)
+		if (pval.intval > 0)
 			dev_info(mdwc->dev, "charger detection in progress\n");
 	}
 
@@ -4269,15 +4257,6 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned int mA)
 		else
 			pval.intval = 1000 * mA;
 		goto set_prop;
-	}
-
-	if (mdwc->dipper_keep_device_session &&
-	    mdwc->in_device_mode && mdwc->vbus_active &&
-	    mdwc->max_power >= 100 && mA && mA < 100) {
-		dev_info(mdwc->dev,
-			"Dipper keeping USB suspend current at 100 mA, ignoring %u mA\n",
-			mA);
-		mA = 100;
 	}
 
 	if (mdwc->max_power == mA || psy_type != POWER_SUPPLY_TYPE_USB)
