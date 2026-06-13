@@ -1285,6 +1285,14 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		goto skip_pinctrl_config;
 	}
 
+	if (qphy->pinctrl && qphy->atest_usb13_suspend) {
+		ret = pinctrl_select_state(qphy->pinctrl,
+				qphy->atest_usb13_suspend);
+		if (ret < 0)
+			dev_err(qphy->phy.dev,
+					"pinctrl state suspend select failed\n");
+	}
+
 	qphy->atest_usb13_active = pinctrl_lookup_state(qphy->pinctrl,
 							"atest_usb13_active");
 	if (IS_ERR(qphy->atest_usb13_active))
