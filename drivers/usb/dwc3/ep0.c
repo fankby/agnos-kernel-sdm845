@@ -255,7 +255,7 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 	}
 
 	/* if link stats is in L1 initiate  remote wakeup before queuing req */
-	if (dwc->speed != DWC3_DSTS_SUPERSPEED) {
+	if (dwc->speed != DWC3_DSTS_SUPERSPEED && !dwc->usb2_l1_disable) {
 		link_state = dwc3_get_link_state(dwc);
 		/* in HS this link state is same as L1 */
 		if (link_state == DWC3_LINK_STATE_U2) {
@@ -658,7 +658,10 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 				usb_gadget_set_state(&dwc->gadget,
 						USB_STATE_CONFIGURED);
 
-			if (!dwc->usb3_u1u2_disable || enable_dwc3_u1u2) {
+			if ((!dwc->usb3_u1u2_disable || enable_dwc3_u1u2) &&
+			    !(dwc->usb2_l1_disable &&
+			      dwc->speed != DWC3_DSTS_SUPERSPEED &&
+			      dwc->speed != DWC3_DSTS_SUPERSPEED_PLUS)) {
 				/*
 				 * Enable transition to U1/U2 state when
 				 * nothing is pending from application.
@@ -666,6 +669,15 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 				reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 				reg |= (DWC3_DCTL_ACCEPTU1ENA |
 							DWC3_DCTL_ACCEPTU2ENA);
+				dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+			} else if (dwc->usb2_l1_disable &&
+				   dwc->speed != DWC3_DSTS_SUPERSPEED &&
+				   dwc->speed != DWC3_DSTS_SUPERSPEED_PLUS) {
+				reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+				reg &= ~(DWC3_DCTL_INITU1ENA |
+					 DWC3_DCTL_ACCEPTU1ENA |
+					 DWC3_DCTL_INITU2ENA |
+					 DWC3_DCTL_ACCEPTU2ENA);
 				dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 			}
 		}

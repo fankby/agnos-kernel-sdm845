@@ -928,7 +928,7 @@ int dwc3_core_init(struct dwc3 *dwc)
 	 * Enable hardware control of sending remote wakeup in HS when
 	 * the device is in the L1 state.
 	 */
-	if (dwc->revision >= DWC3_REVISION_290A) {
+	if (dwc->revision >= DWC3_REVISION_290A && !dwc->usb2_l1_disable) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
 		reg |= DWC3_GUCTL1_DEV_L1_EXIT_BY_HW;
 		dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
