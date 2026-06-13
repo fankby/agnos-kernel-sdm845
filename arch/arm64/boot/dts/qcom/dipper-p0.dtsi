@@ -947,6 +947,12 @@
 	pinctrl-names = "atest_usb13_suspend","atest_usb13_active";
 	pinctrl-0 = <&atest_usb13_suspend>;
 	pinctrl-1 = <&atest_usb13_active>;
+	mi,efuse-pll-bias;
+	mi,efuse-pll-bias-seq = <0x01 0x23>;
+	mi,efuse-pll-bias-host;
+	mi,efuse-pll-bias-seq-host =
+		<0x01 0x24 0x02 0x24 0x03 0x24 0x04 0x23
+		 0x05 0x22 0x06 0x22 0x07 0x21>;
 };
 
 &pmi8998_pdphy {
@@ -998,7 +1004,6 @@
 		qcom,firmware-name = "slpi_dp";
 	};
 };
-
 
 
 
