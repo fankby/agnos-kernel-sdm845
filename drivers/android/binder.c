@@ -4670,7 +4670,8 @@ out:
 	return ret;
 }
 
-static int binder_ioctl_set_ctx_mgr(struct file *filp)
+static int binder_ioctl_set_ctx_mgr(struct file *filp,
+				    struct flat_binder_object *mgr)
 {
 	int ret = 0;
 	struct binder_proc *proc = filp->private_data;
@@ -4699,7 +4700,7 @@ static int binder_ioctl_set_ctx_mgr(struct file *filp)
 	} else {
 		context->binder_context_mgr_uid = curr_euid;
 	}
-	new_node = binder_new_node(proc, NULL);
+	new_node = binder_new_node(proc, mgr);
 	if (!new_node) {
 		ret = -ENOMEM;
 		goto out;
@@ -4715,6 +4716,21 @@ static int binder_ioctl_set_ctx_mgr(struct file *filp)
 out:
 	mutex_unlock(&context->context_mgr_node_lock);
 	return ret;
+}
+
+static int binder_ioctl_set_ctx_mgr_ext(struct file *filp,
+					void __user *ubuf)
+{
+	struct flat_binder_object mgr;
+
+	if (copy_from_user(&mgr, ubuf, sizeof(mgr)))
+		return -EFAULT;
+
+	if (mgr.hdr.type != BINDER_TYPE_BINDER &&
+	    mgr.hdr.type != BINDER_TYPE_WEAK_BINDER)
+		return -EINVAL;
+
+	return binder_ioctl_set_ctx_mgr(filp, &mgr);
 }
 
 static int binder_ioctl_get_node_debug_info(struct binder_proc *proc,
@@ -4786,7 +4802,12 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 	}
 	case BINDER_SET_CONTEXT_MGR:
-		ret = binder_ioctl_set_ctx_mgr(filp);
+		ret = binder_ioctl_set_ctx_mgr(filp, NULL);
+		if (ret)
+			goto err;
+		break;
+	case BINDER_SET_CONTEXT_MGR_EXT:
+		ret = binder_ioctl_set_ctx_mgr_ext(filp, ubuf);
 		if (ret)
 			goto err;
 		break;
