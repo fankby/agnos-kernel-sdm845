@@ -38,16 +38,20 @@
 	};
 };
 
-/* Keep the board's native usb0 host path aligned with the working Xiaomi
- * DT: let pdphy own role detection and source smb2_vbus directly.
+/* The pdphy route removes the old forced sink cmdline, but on Dipper it still
+ * leaves otg_default stuck in ufp/sink/device. Fall back to SMB2 extcon for
+ * role events so usb0 can return to the board's working host path.
  */
+&pmi8998_charger {
+	qcom,use-extcon;
+};
+
 &pmi8998_pdphy {
-	status = "ok";
-	vbus-supply = <&smb2_vbus>;
+	status = "disabled";
 };
 
 &usb0 {
-	extcon = <&pmi8998_pdphy>, <&pmi8998_pdphy>, <&eud>;
+	extcon = <&pmi8998_charger>, <&pmi8998_charger>, <&eud>;
 };
 
 &usb0 {
