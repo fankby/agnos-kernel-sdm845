@@ -38,20 +38,16 @@
 	};
 };
 
-/* Dipper does not need USB-PD for AGNOS/openpilot. Let SMB2's charger/type-C
- * extcon own both peripheral VBUS and host ID events so PD error recovery
- * cannot hard-disconnect an active ADB/Panda session.
+/* Keep the board's native usb0 host path aligned with the working Xiaomi
+ * DT: let pdphy own role detection and source smb2_vbus directly.
  */
-&pmi8998_charger {
-	qcom,use-extcon;
-};
-
 &pmi8998_pdphy {
-	status = "disabled";
+	status = "ok";
+	vbus-supply = <&smb2_vbus>;
 };
 
 &usb0 {
-	extcon = <&pmi8998_charger>, <&pmi8998_charger>, <&eud>;
+	extcon = <&pmi8998_pdphy>, <&pmi8998_pdphy>, <&eud>;
 };
 
 &usb0 {
