@@ -398,6 +398,7 @@ struct binder_node {
 		u8 sched_policy:2;
 		u8 inherit_rt:1;
 		u8 accept_fds:1;
+		u8 txn_security_ctx:1;
 		u8 min_priority;
 	};
 	bool has_async_transaction;
@@ -648,6 +649,7 @@ struct binder_transaction {
 	struct binder_priority	priority;
 	struct binder_priority	saved_priority;
 	bool    set_priority_called;
+	binder_uintptr_t security_ctx;
 	kuid_t	sender_euid;
 	/**
 	 * @lock:  protects @from, @to_proc, and @to_thread
@@ -1365,6 +1367,8 @@ static struct binder_node *binder_init_node_ilocked(
 	node->min_priority = to_kernel_prio(node->sched_policy, priority);
 	node->accept_fds = !!(flags & FLAT_BINDER_FLAG_ACCEPTS_FDS);
 	node->inherit_rt = !!(flags & FLAT_BINDER_FLAG_INHERIT_RT);
+	node->txn_security_ctx =
+		!!(flags & FLAT_BINDER_FLAG_TXN_SECURITY_CTX);
 	spin_lock_init(&node->lock);
 	INIT_LIST_HEAD(&node->work.entry);
 	INIT_LIST_HEAD(&node->async_todo);
@@ -2903,6 +2907,9 @@ static void binder_transaction(struct binder_proc *proc,
 	binder_size_t last_fixup_min_off = 0;
 	struct binder_context *context = proc->context;
 	int t_debug_id = atomic_inc_return(&binder_last_id);
+	binder_size_t added_secctx = 0;
+	char *secctx = NULL;
+	u32 secctx_sz = 0;
 
 	e = binder_transaction_log_add(&binder_transaction_log);
 	e->debug_id = t_debug_id;
@@ -3025,6 +3032,21 @@ static void binder_transaction(struct binder_proc *proc,
 			return_error_param = -EPERM;
 			return_error_line = __LINE__;
 			goto err_invalid_target_handle;
+		}
+		if (target_node->txn_security_ctx) {
+			u32 secid;
+
+			security_task_getsecid(proc->tsk, &secid);
+			ret = security_secid_to_secctx(secid, &secctx,
+						       &secctx_sz);
+			if (ret) {
+				return_error = BR_FAILED_REPLY;
+				return_error_param = ret;
+				return_error_line = __LINE__;
+				goto err_invalid_target_handle;
+			}
+			added_secctx = ALIGN(secctx_sz, sizeof(u64));
+			extra_buffers_size += added_secctx;
 		}
 		binder_inner_proc_lock(proc);
 		if (!(tr->flags & TF_ONE_WAY) && thread->transaction_stack) {
@@ -3188,7 +3210,7 @@ static void binder_transaction(struct binder_proc *proc,
 	}
 	off_end = (void *)off_start + tr->offsets_size;
 	sg_bufp = (u8 *)(PTR_ALIGN(off_end, sizeof(void *)));
-	sg_buf_end = sg_bufp + extra_buffers_size;
+	sg_buf_end = sg_bufp + extra_buffers_size - added_secctx;
 	off_min = 0;
 	for (; offp < off_end; offp++) {
 		struct binder_object_header *hdr;
@@ -3338,6 +3360,15 @@ static void binder_transaction(struct binder_proc *proc,
 			goto err_bad_object_type;
 		}
 	}
+	if (secctx) {
+		u8 *secctx_buf = sg_buf_end;
+
+		memcpy(secctx_buf, secctx, secctx_sz);
+		t->security_ctx = (uintptr_t)secctx_buf +
+			binder_alloc_get_user_buffer_offset(&target_proc->alloc);
+		security_release_secctx(secctx, secctx_sz);
+		secctx = NULL;
+	}
 	tcomplete->type = BINDER_WORK_TRANSACTION_COMPLETE;
 	t->work.type = BINDER_WORK_TRANSACTION;
 
@@ -3423,6 +3454,8 @@ err_bad_call_stack:
 err_empty_call_stack:
 err_dead_binder:
 err_invalid_target_handle:
+	if (secctx)
+		security_release_secctx(secctx, secctx_sz);
 	if (target_thread)
 		binder_thread_dec_tmpref(target_thread);
 	if (target_proc)
@@ -4056,6 +4089,7 @@ retry:
 	while (1) {
 		uint32_t cmd;
 		struct binder_transaction_data tr;
+		struct binder_transaction_data_secctx tr_secctx;
 		struct binder_work *w = NULL;
 		struct list_head *list = NULL;
 		struct binder_transaction *t = NULL;
@@ -4260,7 +4294,8 @@ retry:
 			node_prio.prio = target_node->min_priority;
 			binder_transaction_priority(current, t, node_prio,
 						    target_node->inherit_rt);
-			cmd = BR_TRANSACTION;
+			cmd = target_node->txn_security_ctx ?
+				BR_TRANSACTION_SEC_CTX : BR_TRANSACTION;
 		} else {
 			tr.target.ptr = 0;
 			tr.cookie = 0;
@@ -4299,7 +4334,15 @@ retry:
 			return -EFAULT;
 		}
 		ptr += sizeof(uint32_t);
-		if (copy_to_user(ptr, &tr, sizeof(tr))) {
+		if (cmd == BR_TRANSACTION_SEC_CTX) {
+			tr_secctx.transaction_data = tr;
+			tr_secctx.secctx = t->security_ctx;
+			ret = copy_to_user(ptr, &tr_secctx,
+					   sizeof(tr_secctx));
+		} else {
+			ret = copy_to_user(ptr, &tr, sizeof(tr));
+		}
+		if (ret) {
 			if (t_from)
 				binder_thread_dec_tmpref(t_from);
 
@@ -4308,7 +4351,8 @@ retry:
 
 			return -EFAULT;
 		}
-		ptr += sizeof(tr);
+		ptr += cmd == BR_TRANSACTION_SEC_CTX ?
+			sizeof(tr_secctx) : sizeof(tr);
 
 		trace_binder_transaction_received(t);
 		binder_stat_br(proc, thread, cmd);
@@ -4316,6 +4360,8 @@ retry:
 			     "%d:%d %s %d %d:%d, cmd %d size %zd-%zd ptr %016llx-%016llx\n",
 			     proc->pid, thread->pid,
 			     (cmd == BR_TRANSACTION) ? "BR_TRANSACTION" :
+			     (cmd == BR_TRANSACTION_SEC_CTX) ?
+			     "BR_TRANSACTION_SEC_CTX" :
 			     "BR_REPLY",
 			     t->debug_id, t_from ? t_from->proc->pid : 0,
 			     t_from ? t_from->pid : 0, cmd,
@@ -4325,7 +4371,8 @@ retry:
 		if (t_from)
 			binder_thread_dec_tmpref(t_from);
 		t->buffer->allow_user_free = 1;
-		if (cmd == BR_TRANSACTION && !(t->flags & TF_ONE_WAY)) {
+		if ((cmd == BR_TRANSACTION || cmd == BR_TRANSACTION_SEC_CTX) &&
+		    !(t->flags & TF_ONE_WAY)) {
 			binder_inner_proc_lock(thread->proc);
 			t->to_parent = thread->transaction_stack;
 			t->to_thread = thread;
@@ -4725,10 +4772,6 @@ static int binder_ioctl_set_ctx_mgr_ext(struct file *filp,
 
 	if (copy_from_user(&mgr, ubuf, sizeof(mgr)))
 		return -EFAULT;
-
-	if (mgr.hdr.type != BINDER_TYPE_BINDER &&
-	    mgr.hdr.type != BINDER_TYPE_WEAK_BINDER)
-		return -EINVAL;
 
 	return binder_ioctl_set_ctx_mgr(filp, &mgr);
 }

@@ -87,6 +87,10 @@ enum flat_binder_object_flags {
 	 * scheduling policy from the caller (for synchronous transactions).
 	 */
 	FLAT_BINDER_FLAG_INHERIT_RT = 0x800,
+	/**
+	 * @FLAT_BINDER_FLAG_TXN_SECURITY_CTX: request sender security context.
+	 */
+	FLAT_BINDER_FLAG_TXN_SECURITY_CTX = 0x1000,
 };
 
 #ifdef BINDER_IPC_32BIT
@@ -318,6 +322,11 @@ struct binder_transaction_data_sg {
 	binder_size_t buffers_size;
 };
 
+struct binder_transaction_data_secctx {
+	struct binder_transaction_data transaction_data;
+	binder_uintptr_t secctx;
+};
+
 struct binder_ptr_cookie {
 	binder_uintptr_t ptr;
 	binder_uintptr_t cookie;
@@ -349,6 +358,8 @@ enum binder_driver_return_protocol {
 	/* No parameters! */
 
 	BR_TRANSACTION = _IOR('r', 2, struct binder_transaction_data),
+	BR_TRANSACTION_SEC_CTX = _IOR('r', 2,
+				      struct binder_transaction_data_secctx),
 	BR_REPLY = _IOR('r', 3, struct binder_transaction_data),
 	/*
 	 * binder_transaction_data: the received command.
