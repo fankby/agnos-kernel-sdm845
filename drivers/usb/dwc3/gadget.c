@@ -1644,10 +1644,6 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol)
 		else
 			dep->flags |= DWC3_EP_STALL;
 	} else {
-		if (!(dep->flags & (DWC3_EP_STALL | DWC3_EP_WEDGE))) {
-			dbg_event(dep->number, "CLRHALTIDEM", 0);
-			return 0;
-		}
 
 		ret = dwc3_send_clear_stall_ep_cmd(dep);
 		if (ret)
@@ -3303,8 +3299,7 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 
 	if ((dwc->revision > DWC3_REVISION_194A) &&
 	    (speed != DWC3_DSTS_SUPERSPEED) &&
-	    (speed != DWC3_DSTS_SUPERSPEED_PLUS) &&
-	    !dwc->usb2_l1_disable) {
+	    (speed != DWC3_DSTS_SUPERSPEED_PLUS)) {
 		reg = dwc3_readl(dwc->regs, DWC3_DCFG);
 		reg |= DWC3_DCFG_LPM_CAP;
 		dwc3_writel(dwc->regs, DWC3_DCFG, reg);
@@ -3329,16 +3324,8 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 	} else {
-		reg = dwc3_readl(dwc->regs, DWC3_DCFG);
-		reg &= ~DWC3_DCFG_LPM_CAP;
-		dwc3_writel(dwc->regs, DWC3_DCFG, reg);
-
 		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
-		reg &= ~(DWC3_DCTL_HIRD_THRES_MASK |
-			 DWC3_DCTL_INITU1ENA |
-			 DWC3_DCTL_ACCEPTU1ENA |
-			 DWC3_DCTL_INITU2ENA |
-			 DWC3_DCTL_ACCEPTU2ENA);
+		reg &= ~DWC3_DCTL_HIRD_THRES_MASK;
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 	}
 
