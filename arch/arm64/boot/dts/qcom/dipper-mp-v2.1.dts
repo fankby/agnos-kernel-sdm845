@@ -38,35 +38,6 @@
 	};
 };
 
-/* The pdphy route removes the old forced sink cmdline, but on Dipper it still
- * leaves otg_default stuck in ufp/sink/device. Fall back to SMB2 extcon for
- * role events so usb0 can return to the board's working host path.
- */
-&pmi8998_charger {
-	qcom,use-extcon;
-};
-
-&pmi8998_pdphy {
-	status = "disabled";
-};
-
-&usb0 {
-	extcon = <&pmi8998_charger>, <&pmi8998_charger>, <&eud>;
-};
-
-&usb0 {
-	dwc3@a600000 {
-		/*
-		 * Dipper's USB2 gadget link can enter L1/SLEEP shortly after
-		 * configuration and then fail the DWC3 recovery path, dropping
-		 * ADB/Panda back to default/full-speed. Keep HS sessions out of
-		 * USB2 LPM instead of relying on userspace to rebind the gadget.
-		 */
-		snps,usb2-l1-disable;
-		snps,dis_u2_susphy_quirk;
-	};
-};
-
 /*
  * Xiaomi's SE6 HS-UART shows up as /dev/ttyHS0. AGNOS/openpilot tizi branches
  * treat that path as the comma ublox/GNSS modem UART, which Dipper does not

@@ -1581,29 +1581,6 @@ static void android_disconnect(struct usb_gadget *gadget)
 		schedule_work(&gi->work);
 	composite_disconnect(gadget);
 }
-
-static void android_reset(struct usb_gadget *gadget)
-{
-	struct usb_composite_dev *cdev = get_gadget_data(gadget);
-	struct gadget_info *gi;
-
-	if (!cdev) {
-		pr_err("%s: gadget is not connected\n", __func__);
-		return;
-	}
-
-	gi = container_of(cdev, struct gadget_info, cdev);
-
-	/*
-	 * Bus reset is part of normal re-enumeration. We still need the
-	 * composite layer to disable current functions so FunctionFS/ADB can
-	 * be cleanly re-enabled on the next SET_CONFIGURATION, but we must not
-	 * advertise it as a cable disconnect or clear gi->connected here.
-	 */
-	composite_reset_config(cdev);
-	if (!gi->unbinding)
-		schedule_work(&gi->work);
-}
 #endif
 
 static const struct usb_gadget_driver configfs_driver_template = {
@@ -1611,7 +1588,7 @@ static const struct usb_gadget_driver configfs_driver_template = {
 	.unbind         = configfs_composite_unbind,
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 	.setup          = android_setup,
-	.reset          = android_reset,
+	.reset          = android_disconnect,
 	.disconnect     = android_disconnect,
 #else
 	.setup          = composite_setup,
