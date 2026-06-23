@@ -3344,6 +3344,11 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup)
 	dev_dbg(dwc->dev, "%s\n", __func__);
 
 	dbg_event(0xFF, "WAKEUP", remote_wakeup);
+	dev_info(dwc->dev,
+		"dipper-adb-trace: wakeup_irq remote=%d link=%s b_suspend=%d state=%d speed=%d in_lpm=%d\n",
+		remote_wakeup, dwc3_gadget_link_string(dwc->link_state),
+		dwc->b_suspend, dwc->gadget.state, dwc->gadget.speed,
+		atomic_read(&dwc->in_lpm));
 	/*
 	 * Identify if it is called from wakeup_interrupt() context for bus
 	 * resume or as part of remote wakeup. And based on that check for
@@ -3372,10 +3377,17 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup)
 		 */
 		dwc->link_state = DWC3_LINK_STATE_U0;
 		dwc3_resume_gadget(dwc);
+		dev_info(dwc->dev,
+			"dipper-adb-trace: wakeup_resume_done link=%s b_suspend=%d state=%d\n",
+			dwc3_gadget_link_string(dwc->link_state),
+			dwc->b_suspend, dwc->gadget.state);
 		return;
 	}
 
 	dwc->link_state = DWC3_LINK_STATE_U0;
+	dev_info(dwc->dev,
+		"dipper-adb-trace: wakeup_no_resume link=%s perform_resume=%d\n",
+		dwc3_gadget_link_string(dwc->link_state), perform_resume);
 }
 
 static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
@@ -3383,6 +3395,13 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 {
 	enum dwc3_link_state	next = evtinfo & DWC3_LINK_STATE_MASK;
 	unsigned int		pwropt;
+
+	dev_info(dwc->dev,
+		"dipper-adb-trace: linksts_change from=%s to=%s evtinfo=0x%x b_suspend=%d state=%d speed=%d in_lpm=%d\n",
+		dwc3_gadget_link_string(dwc->link_state),
+		dwc3_gadget_link_string(next), evtinfo, dwc->b_suspend,
+		dwc->gadget.state, dwc->gadget.speed,
+		atomic_read(&dwc->in_lpm));
 
 	/*
 	 * WORKAROUND: DWC3 < 2.50a have an issue when configured without
@@ -3477,6 +3496,10 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 
 	dev_dbg(dwc->dev, "Going from (%d)--->(%d)\n", dwc->link_state, next);
 	dwc->link_state = next;
+	dev_info(dwc->dev,
+		"dipper-adb-trace: linksts_done link=%s b_suspend=%d state=%d\n",
+		dwc3_gadget_link_string(dwc->link_state), dwc->b_suspend,
+		dwc->gadget.state);
 	wake_up_interruptible(&dwc->wait_linkstate);
 }
 
@@ -3487,6 +3510,12 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 
 	dbg_event(0xFF, "SUSPEND INT", 0);
 	dev_dbg(dwc->dev, "%s Entry to %d\n", __func__, next);
+	dev_info(dwc->dev,
+		"dipper-adb-trace: suspend_irq next=%s current=%s evtinfo=0x%x state=%d speed=%d b_suspend=%d in_lpm=%d\n",
+		dwc3_gadget_link_string(next),
+		dwc3_gadget_link_string(dwc->link_state), evtinfo,
+		dwc->gadget.state, dwc->gadget.speed, dwc->b_suspend,
+		atomic_read(&dwc->in_lpm));
 
 	if (dwc->link_state != next && next == DWC3_LINK_STATE_U3) {
 		/*
@@ -3508,9 +3537,17 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 		dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
 		dwc->b_suspend = true;
 		dwc3_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_OTG_EVENT, 0);
+		dev_info(dwc->dev,
+			"dipper-adb-trace: suspend_notified_otg link=%s b_suspend=%d state=%d\n",
+			dwc3_gadget_link_string(next), dwc->b_suspend,
+			dwc->gadget.state);
 	}
 
 	dwc->link_state = next;
+	dev_info(dwc->dev,
+		"dipper-adb-trace: suspend_irq_done link=%s b_suspend=%d state=%d\n",
+		dwc3_gadget_link_string(dwc->link_state),
+		dwc->b_suspend, dwc->gadget.state);
 	dwc3_trace(trace_dwc3_gadget, "link state %d", dwc->link_state);
 }
 
@@ -3541,6 +3578,15 @@ static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc,
 static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_devt *event)
 {
+	if (event->type != DWC3_DEVICE_EVENT_SOF)
+		dev_info(dwc->dev,
+			"dipper-adb-trace: dev_event type=%u info=0x%x name=%s link=%s state=%d speed=%d b_suspend=%d in_lpm=%d\n",
+			event->type, event->event_info,
+			dwc3_gadget_event_string(event),
+			dwc3_gadget_link_string(dwc->link_state),
+			dwc->gadget.state, dwc->gadget.speed,
+			dwc->b_suspend, atomic_read(&dwc->in_lpm));
+
 	switch (event->type) {
 	case DWC3_DEVICE_EVENT_DISCONNECT:
 		dwc3_gadget_disconnect_interrupt(dwc);

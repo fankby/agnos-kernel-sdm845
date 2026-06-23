@@ -2438,6 +2438,9 @@ void composite_suspend(struct usb_gadget *gadget)
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "suspend\n");
+	pr_info("dipper-adb-trace: composite_suspend state=%d speed=%d suspended=%d config=%s\n",
+		gadget->state, gadget->speed, cdev->suspended,
+		cdev->config ? cdev->config->label : "none");
 	spin_lock_irqsave(&cdev->lock, flags);
 	if (cdev->config) {
 		list_for_each_entry(f, &cdev->config->functions, list) {
@@ -2452,6 +2455,8 @@ void composite_suspend(struct usb_gadget *gadget)
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	usb_gadget_vbus_draw(gadget, 2);
+	pr_info("dipper-adb-trace: composite_suspend_done suspended=%d vbus_draw=2\n",
+		cdev->suspended);
 }
 
 void composite_resume(struct usb_gadget *gadget)
@@ -2465,6 +2470,9 @@ void composite_resume(struct usb_gadget *gadget)
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "resume\n");
+	pr_info("dipper-adb-trace: composite_resume state=%d speed=%d suspended=%d config=%s\n",
+		gadget->state, gadget->speed, cdev->suspended,
+		cdev->config ? cdev->config->label : "none");
 	if (cdev->driver->resume)
 		cdev->driver->resume(cdev);
 
@@ -2495,6 +2503,8 @@ void composite_resume(struct usb_gadget *gadget)
 
 	spin_unlock_irqrestore(&cdev->lock, flags);
 	cdev->suspended = 0;
+	pr_info("dipper-adb-trace: composite_resume_done suspended=%d vbus_draw=%u\n",
+		cdev->suspended, USB_VBUS_DRAW(gadget->speed));
 }
 
 /*-------------------------------------------------------------------------*/

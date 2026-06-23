@@ -2270,6 +2270,13 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool hibernation)
 	struct dwc3_event_buffer *evt;
 	struct usb_irq *uirq;
 
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: msm_suspend_enter hib=%d otg=%s inputs=0x%lx vbus=%d dev=%d host=%d in_lpm=%d b_suspend=%d gadget_state=%d link=%d\n",
+		hibernation, usb_otg_state_string(mdwc->otg_state),
+		mdwc->inputs, mdwc->vbus_active, mdwc->in_device_mode,
+		mdwc->in_host_mode, atomic_read(&dwc->in_lpm),
+		dwc->b_suspend, dwc->gadget.state, dwc->link_state);
+
 	mutex_lock(&mdwc->suspend_resume_mutex);
 	if (atomic_read(&dwc->in_lpm)) {
 		dev_dbg(mdwc->dev, "%s: Already suspended\n", __func__);
@@ -2436,6 +2443,12 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool hibernation)
 	}
 
 	dev_info(mdwc->dev, "DWC3 in low power mode\n");
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: msm_suspend_done otg=%s inputs=0x%lx lpm_flags=0x%lx in_lpm=%d wake_cap=%d use_pdc=%d\n",
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs,
+		mdwc->lpm_flags, atomic_read(&dwc->in_lpm),
+		!!(mdwc->lpm_flags & MDWC3_ASYNC_IRQ_WAKE_CAPABILITY),
+		mdwc->use_pdc_interrupts);
 	dbg_event(0xFF, "Ctl Sus", atomic_read(&dwc->in_lpm));
 	mutex_unlock(&mdwc->suspend_resume_mutex);
 	return 0;
@@ -2449,6 +2462,12 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 	struct usb_irq *uirq;
 
 	dev_dbg(mdwc->dev, "%s: exiting lpm\n", __func__);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: msm_resume_enter otg=%s inputs=0x%lx vbus=%d dev=%d host=%d in_lpm=%d b_suspend=%d lpm_flags=0x%lx gadget_state=%d link=%d\n",
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs,
+		mdwc->vbus_active, mdwc->in_device_mode, mdwc->in_host_mode,
+		atomic_read(&dwc->in_lpm), dwc->b_suspend, mdwc->lpm_flags,
+		dwc->gadget.state, dwc->link_state);
 
 	mutex_lock(&mdwc->suspend_resume_mutex);
 	if (!atomic_read(&dwc->in_lpm)) {
@@ -2579,6 +2598,11 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 	}
 
 	dev_info(mdwc->dev, "DWC3 exited from low power mode\n");
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: msm_resume_done otg=%s inputs=0x%lx lpm_flags=0x%lx in_lpm=%d gadget_state=%d link=%d b_suspend=%d\n",
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs,
+		mdwc->lpm_flags, atomic_read(&dwc->in_lpm),
+		dwc->gadget.state, dwc->link_state, dwc->b_suspend);
 
 	/* Enable core irq */
 	if (dwc->irq)
@@ -2633,6 +2657,10 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 		dev_dbg(mdwc->dev, "XCVR: SUSP clear\n");
 		clear_bit(B_SUSPEND, &mdwc->inputs);
 	}
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: ext_event_notify id=%d vbus=%d suspend=%d inputs=0x%lx otg=%s\n",
+		mdwc->id_state, mdwc->vbus_active, mdwc->suspend,
+		mdwc->inputs, usb_otg_state_string(mdwc->otg_state));
 
 	schedule_delayed_work(&mdwc->sm_work, 0);
 }
@@ -2647,6 +2675,12 @@ static void dwc3_resume_work(struct work_struct *w)
 	int ret = 0;
 
 	dev_dbg(mdwc->dev, "%s: dwc3 resume work\n", __func__);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: resume_work_enter pending=%d pm_suspended=%d otg=%s inputs=0x%lx vbus=%d id=%d in_lpm=%d b_suspend=%d\n",
+		mdwc->resume_pending, atomic_read(&mdwc->pm_suspended),
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs,
+		mdwc->vbus_active, mdwc->id_state, atomic_read(&dwc->in_lpm),
+		dwc->b_suspend);
 
 	if (mdwc->vbus_active && !mdwc->in_restart) {
 		edev = mdwc->extcon_vbus;
@@ -2708,6 +2742,10 @@ static void dwc3_resume_work(struct work_struct *w)
 		return;
 	}
 	dwc3_ext_event_notify(mdwc);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: resume_work_exit pending=%d otg=%s inputs=0x%lx in_lpm=%d b_suspend=%d\n",
+		mdwc->resume_pending, usb_otg_state_string(mdwc->otg_state),
+		mdwc->inputs, atomic_read(&dwc->in_lpm), dwc->b_suspend);
 }
 
 static void dwc3_pwr_event_handler(struct dwc3_msm *mdwc)
@@ -2717,6 +2755,10 @@ static void dwc3_pwr_event_handler(struct dwc3_msm *mdwc)
 
 	irq_stat = dwc3_msm_read_reg(mdwc->base, PWR_EVNT_IRQ_STAT_REG);
 	dev_dbg(mdwc->dev, "%s irq_stat=%X\n", __func__, irq_stat);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: pwr_event_handler irq_stat=0x%x in_lpm=%d otg=%s inputs=0x%lx\n",
+		irq_stat, atomic_read(&dwc->in_lpm),
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs);
 
 	/* Check for P3 events */
 	if ((irq_stat & PWR_EVNT_POWERDOWN_OUT_P3_MASK) &&
@@ -2772,6 +2814,10 @@ static irqreturn_t msm_dwc3_pwr_irq_thread(int irq, void *_mdwc)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 
 	dev_dbg(mdwc->dev, "%s\n", __func__);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: pwr_irq_thread in_lpm=%d pending=%d otg=%s inputs=0x%lx\n",
+		atomic_read(&dwc->in_lpm), mdwc->resume_pending,
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs);
 
 	if (atomic_read(&dwc->in_lpm))
 		dwc3_resume_work(&mdwc->resume_work);
@@ -2789,6 +2835,10 @@ static irqreturn_t msm_dwc3_pwr_irq(int irq, void *data)
 
 	dwc->t_pwr_evt_irq = ktime_get();
 	dev_dbg(mdwc->dev, "%s received\n", __func__);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: pwr_irq in_lpm=%d pending=%d otg=%s inputs=0x%lx\n",
+		atomic_read(&dwc->in_lpm), mdwc->resume_pending,
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs);
 	/*
 	 * When in Low Power Mode, can't read PWR_EVNT_IRQ_STAT_REG to acertain
 	 * which interrupts have been triggered, as the clocks are disabled.
@@ -4306,6 +4356,14 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	state = usb_otg_state_string(mdwc->otg_state);
 	dev_dbg(mdwc->dev, "%s state\n", state);
 	dbg_event(0xFF, state, 0);
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: otg_sm_enter state=%s inputs=0x%lx id=%d bsv=%d bsusp=%d vbus=%d dev=%d host=%d in_lpm=%d b_suspend=%d usage=%d\n",
+		state, mdwc->inputs, test_bit(ID, &mdwc->inputs),
+		test_bit(B_SESS_VLD, &mdwc->inputs),
+		test_bit(B_SUSPEND, &mdwc->inputs), mdwc->vbus_active,
+		mdwc->in_device_mode, mdwc->in_host_mode,
+		atomic_read(&dwc->in_lpm), dwc->b_suspend,
+		atomic_read(&mdwc->dev->power.usage_count));
 
 	/* Check OTG state */
 	switch (mdwc->otg_state) {
@@ -4462,6 +4520,12 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		dev_err(mdwc->dev, "%s: invalid otg-state\n", __func__);
 
 	}
+
+	dev_info(mdwc->dev,
+		"dipper-adb-trace: otg_sm_exit state=%s inputs=0x%lx work=%d delay=%lu in_lpm=%d b_suspend=%d usage=%d\n",
+		usb_otg_state_string(mdwc->otg_state), mdwc->inputs, work,
+		delay, atomic_read(&dwc->in_lpm), dwc->b_suspend,
+		atomic_read(&mdwc->dev->power.usage_count));
 
 	if (work)
 		schedule_delayed_work(&mdwc->sm_work, delay);

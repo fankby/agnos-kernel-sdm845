@@ -114,6 +114,11 @@ static void msm_hsphy_enable_clocks(struct msm_hsphy *phy, bool on)
 {
 	dev_dbg(phy->phy.dev, "%s(): clocks_enabled:%d on:%d\n",
 			__func__, phy->clocks_enabled, on);
+	dev_info(phy->phy.dev,
+		"dipper-adb-trace: hsphy_clocks on=%d was=%d cable=%d host=%d suspended=%d power=%d\n",
+		on, phy->clocks_enabled, phy->cable_connected,
+		!!(phy->phy.flags & PHY_HOST_MODE), phy->suspended,
+		phy->power_enabled);
 
 	if (!phy->clocks_enabled && on) {
 		clk_prepare_enable(phy->ref_clk_src);
@@ -157,6 +162,10 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 
 	dev_dbg(phy->phy.dev, "%s turn %s regulators. power_enabled:%d\n",
 			__func__, on ? "on" : "off", phy->power_enabled);
+	dev_info(phy->phy.dev,
+		"dipper-adb-trace: hsphy_power on=%d was=%d cable=%d host=%d suspended=%d\n",
+		on, phy->power_enabled, phy->cable_connected,
+		!!(phy->phy.flags & PHY_HOST_MODE), phy->suspended);
 
 	if (phy->power_enabled == on) {
 		dev_dbg(phy->phy.dev, "PHYs' regulators are already ON.\n");
@@ -438,6 +447,12 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 static int msm_hsphy_set_suspend(struct usb_phy *uphy, int suspend)
 {
 	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
+
+	dev_info(uphy->dev,
+		"dipper-adb-trace: hsphy_set_suspend suspend=%d was=%d cable=%d host=%d clocks=%d power=%d\n",
+		suspend, phy->suspended, phy->cable_connected,
+		!!(phy->phy.flags & PHY_HOST_MODE), phy->clocks_enabled,
+		phy->power_enabled);
 
 	if (phy->suspended && suspend) {
 		dev_dbg(uphy->dev, "%s: USB PHY is already suspended\n",
