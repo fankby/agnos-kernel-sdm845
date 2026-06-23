@@ -1387,8 +1387,13 @@ static int dwc3_gadget_wakeup(struct usb_gadget *g)
 
 static bool dwc3_gadget_is_suspended(struct dwc3 *dwc)
 {
-	if (atomic_read(&dwc->in_lpm) ||
-			dwc->link_state == DWC3_LINK_STATE_U3)
+	/*
+	 * SDM845/Dipper keeps snps,bus-suspend-enable disabled like the
+	 * stock device tree. In that mode a HS U3 event is only a link-state
+	 * observation for the gadget side; FunctionFS should be gated only
+	 * after the explicit bus-suspend path marks b_suspend.
+	 */
+	if (atomic_read(&dwc->in_lpm) || dwc->b_suspend)
 		return true;
 	return false;
 }
@@ -3532,6 +3537,19 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 			return;
 		}
 
+		if (!dwc->enable_bus_suspend) {
+			/*
+			 * Keep the real link state, but do not send ADB/FunctionFS
+			 * through composite_suspend when the Qualcomm wrapper is not
+			 * using the explicit bus-suspend OTG state machine.
+			 */
+			dev_info(dwc->dev,
+				"dipper-adb-trace: suspend_link_only link=%s state=%d speed=%d\n",
+				dwc3_gadget_link_string(next),
+				dwc->gadget.state, dwc->gadget.speed);
+			goto out;
+		}
+
 		dwc3_suspend_gadget(dwc);
 
 		dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
@@ -3543,6 +3561,7 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 			dwc->gadget.state);
 	}
 
+out:
 	dwc->link_state = next;
 	dev_info(dwc->dev,
 		"dipper-adb-trace: suspend_irq_done link=%s b_suspend=%d state=%d\n",
@@ -3676,14 +3695,6 @@ static void dwc3_process_event_entry(struct dwc3 *dwc,
 	/* Endpoint IRQ, handle it and return early */
 	if (event->type.is_devspec == 0) {
 		/* depevt */
-		/*
-		 * If remote-wakeup attempt by device had failed, then core
-		 * wouldn't give wakeup event after resume. Handle that
-		 * here on ep event which indicates that bus is resumed.
-		 */
-		if (dwc->b_suspend &&
-		    dwc3_get_link_state(dwc) == DWC3_LINK_STATE_U0)
-			dwc3_gadget_wakeup_interrupt(dwc, false);
 		return dwc3_endpoint_interrupt(dwc, &event->depevt);
 	}
 
