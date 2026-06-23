@@ -1915,6 +1915,11 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		break;
 	case DWC3_CONTROLLER_NOTIFY_OTG_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_OTG_EVENT received\n");
+		dev_info(mdwc->dev,
+			"dipper-adb-trace: notify_otg enable_bus_suspend=%d b_suspend=%d old_suspend=%d in_lpm=%d otg=%s inputs=0x%lx\n",
+			dwc->enable_bus_suspend, dwc->b_suspend, mdwc->suspend,
+			atomic_read(&dwc->in_lpm),
+			usb_otg_state_string(mdwc->otg_state), mdwc->inputs);
 		if (dwc->enable_bus_suspend) {
 			mdwc->suspend = dwc->b_suspend;
 			queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
